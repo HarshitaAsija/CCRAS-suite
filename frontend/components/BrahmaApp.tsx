@@ -26,9 +26,9 @@ export default function BrahmaApp() {
         return <StudyDesignStudio />;
       case "collections":
       case "protocols":
-        return <ProtocolsList />;
+        return <ProtocolsList setActivePage={setActivePage} />;
       case "exports":
-        return <Exports />;
+        return <Exports setActivePage={setActivePage} />;
       case "settings":
         return <SettingsView />;
       default:

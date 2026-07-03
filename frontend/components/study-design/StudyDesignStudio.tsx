@@ -15,6 +15,11 @@ import {
   ProtocolState, ProtocolIntelligence, generateHypotheses, 
   recommendStudyType, recommendStatisticalTest, analyzeProtocol 
 } from "../../lib/ai-architect";
+import { 
+  updateStudy, recommendStudyTypeAPI, generateHypothesisAPI, 
+  recommendStatisticalPlanAPI, analyzeProtocolAPI, exportProtocolAPI, 
+  fetchProtocolSummaryAPI, validateEvidenceHandoff, HandoffPayload
+} from "../../lib/api";
 
 const STEPS = [
   { id: "q", label: "Research Question" },
@@ -71,7 +76,12 @@ export function StudyDesignStudio() {
   const [state, setState] = useState<ProtocolState>(DEFAULT_STATE);
   const [versions, setVersions] = useState<{ id: string; timestamp: string; state: ProtocolState }[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [rightPaneView, setRightPaneView] = useState<"intelligence" | "document">("intelligence");
+  const [rightPaneView, setRightPaneView] = useState<"intelligence" | "document" | "reviewer">("intelligence");
+  
+  // New API & UI statuses
+  const [intelligenceMode, setIntelligenceMode] = useState<"ai" | "fallback">("ai");
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "offline">("saved");
+  const [loadingIntelligence, setLoadingIntelligence] = useState(false);
 
   // Load from localStorage
   useEffect(() => {
@@ -93,8 +103,10 @@ export function StudyDesignStudio() {
       try { 
         const parsed = JSON.parse(handoff);
         initialState.handoffData = parsed;
-        if (parsed.hypothesisSeed && !initialState.researchQuestion) {
-          initialState.researchQuestion = parsed.hypothesisSeed;
+        // Support both old format (hypothesisSeed) and new adapter format (hypothesis_seed)
+        const seed = parsed.hypothesis_seed || parsed.hypothesisSeed;
+        if (seed && !initialState.researchQuestion) {
+          initialState.researchQuestion = seed;
         }
       } catch (e) { console.error(e); }
     }
@@ -108,47 +120,208 @@ export function StudyDesignStudio() {
     setIsLoaded(true);
   }, []);
 
-  // Save to localStorage
+  // Save local versions
   useEffect(() => {
     if (isLoaded) {
-      localStorage.setItem("brahma_protocol_state", JSON.stringify(state));
       localStorage.setItem("brahma_versions", JSON.stringify(versions));
     }
-  }, [state, versions, isLoaded]);
+  }, [versions, isLoaded]);
 
-  // Run Intelligence Engine
+  // Run Intelligence Engine (Scoring / Risks / Guidelines)
   useEffect(() => {
-    if (isLoaded) {
-      const intel = analyzeProtocol(state);
-      // Prevent infinite loop by only updating if score/completeness actually changes significantly 
-      // (a deep equality check is better, but this simple check prevents loops for now)
-      if (intel.qualityScore !== state.intelligence.qualityScore || intel.completeness !== state.intelligence.completeness || intel.risks.length !== state.intelligence.risks.length) {
-        setState(prev => ({ ...prev, intelligence: intel }));
+    if (!isLoaded) return;
+
+    const triggerAnalyze = async () => {
+      setLoadingIntelligence(true);
+      try {
+        const intel = await analyzeProtocolAPI(state);
+        if (
+          intel.qualityScore !== state.intelligence.qualityScore ||
+          intel.completeness !== state.intelligence.completeness ||
+          intel.risks.length !== state.intelligence.risks.length
+        ) {
+          setState(prev => ({ ...prev, intelligence: { ...prev.intelligence, ...intel } }));
+        }
+        setIntelligenceMode("ai");
+      } catch (e) {
+        setIntelligenceMode("fallback");
+        // Rule-based client-side fallback
+        const intel = analyzeProtocol(state);
+        if (
+          intel.qualityScore !== state.intelligence.qualityScore ||
+          intel.completeness !== state.intelligence.completeness ||
+          intel.risks.length !== state.intelligence.risks.length
+        ) {
+          setState(prev => ({ ...prev, intelligence: { ...prev.intelligence, ...intel } }));
+        }
+      } finally {
+        setLoadingIntelligence(false);
       }
+    };
+
+    const delay = setTimeout(triggerAnalyze, 800); // Debounce analyzer
+    return () => clearTimeout(delay);
+  }, [
+    state.researchQuestion,
+    state.pico.population,
+    state.pico.intervention,
+    state.pico.comparator,
+    state.pico.outcome,
+    state.sampleSizeResult.total,
+    state.criteria.inclusion,
+    state.criteria.exclusion,
+    state.confounders,
+    state.ayurveda.formulation,
+    state.ayurveda.dosage,
+    state.ayurveda.standardization,
+    state.ayurveda.safety,
+    state.ethics,
+    isLoaded
+  ]);
+
+  // Async AI Recommendations for PICO changes (Study type & Hypotheses)
+  useEffect(() => {
+    if (!isLoaded) return;
+    
+    const triggerAI = async () => {
+      let updatedFields: Partial<ProtocolState> = {};
+      let hasUpdates = false;
+
+      // 1. Study Type Auto-rec
+      if (state.pico.population && state.pico.intervention && state.studyType.isAuto) {
+        setLoadingIntelligence(true);
+        try {
+          const rec = await recommendStudyTypeAPI(state.pico);
+          updatedFields.studyType = { ...state.studyType, ...rec };
+          setIntelligenceMode("ai");
+          hasUpdates = true;
+        } catch (e) {
+          setIntelligenceMode("fallback");
+          const localRec = recommendStudyType(state.pico);
+          updatedFields.studyType = { ...state.studyType, ...localRec };
+          hasUpdates = true;
+        }
+      }
+
+      // 2. Hypothesis Auto-gen
+      if (state.pico.population && state.pico.intervention && state.hypothesis.isAuto) {
+        setLoadingIntelligence(true);
+        try {
+          const hyp = await generateHypothesisAPI(state.pico);
+          updatedFields.hypothesis = { ...state.hypothesis, ...hyp };
+          setIntelligenceMode("ai");
+          hasUpdates = true;
+        } catch (e) {
+          setIntelligenceMode("fallback");
+          const localHyp = generateHypotheses(state.pico);
+          updatedFields.hypothesis = { ...state.hypothesis, ...localHyp };
+          hasUpdates = true;
+        }
+      }
+
+      if (hasUpdates) {
+        setState(prev => ({ ...prev, ...updatedFields }));
+        setLoadingIntelligence(false);
+      }
+    };
+
+    const delay = setTimeout(triggerAI, 1000); // Debounce
+    return () => clearTimeout(delay);
+  }, [state.pico.population, state.pico.intervention, state.pico.comparator, state.pico.outcome, state.studyType.isAuto, state.hypothesis.isAuto, isLoaded]);
+
+  // Stat Plan Auto-rec
+  useEffect(() => {
+    if (!isLoaded || !state.statisticalPlan.isAuto) return;
+
+    const triggerStatAI = async () => {
+      try {
+        const rec = await recommendStatisticalPlanAPI(state.studyType.recommended, state.pico.outcome);
+        setState(prev => ({
+          ...prev,
+          statisticalPlan: {
+            ...prev.statisticalPlan,
+            recommendedTest: rec.value || "Pending",
+            primaryEndpoint: prev.pico.outcome || "",
+            aiMetadata: rec
+          }
+        }));
+        setIntelligenceMode("ai");
+      } catch (e) {
+        setIntelligenceMode("fallback");
+        const rec = recommendStatisticalTest(state.studyType.recommended, state.pico.outcome || "");
+        setState(prev => ({
+          ...prev,
+          statisticalPlan: {
+            ...prev.statisticalPlan,
+            recommendedTest: rec?.value || "Pending",
+            primaryEndpoint: prev.pico.outcome || "",
+            aiMetadata: rec
+          }
+        }));
+      }
+    };
+
+    triggerStatAI();
+  }, [state.studyType.recommended, state.pico.outcome, state.statisticalPlan.isAuto, isLoaded]);
+
+  // Autosave to Backend / Sync to localStorage fallback
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    // Local storage fallback
+    localStorage.setItem("brahma_protocol_state", JSON.stringify(state));
+
+    if (!state.id) {
+      setSaveStatus("offline");
+      return;
     }
-  }, [state, isLoaded]);
+
+    const triggerSave = async () => {
+      setSaveStatus("saving");
+      try {
+        const payload = {
+          title: state.title || "Untitled Study Protocol",
+          research_question: state.researchQuestion,
+          pico: state.pico,
+          hypothesis: state.hypothesis,
+          study_type: state.studyType,
+          sample_size: state.sampleSizeParams,
+          sample_size_result: state.sampleSizeResult,
+          statistical_plan: state.statisticalPlan,
+          eligibility: state.criteria,
+          confounders: state.confounders,
+          ayush_protocol: state.ayurveda,
+          timeline: state.timeline,
+          ethics: state.ethics,
+          quality_score: state.intelligence.qualityScore,
+          completeness: state.intelligence.completeness,
+          risks: state.intelligence.risks,
+          compliance: state.intelligence.compliance,
+          snapshots: versions.map(v => ({ id: v.id, timestamp: v.timestamp, state: v.state }))
+        };
+
+        await updateStudy(state.id!, payload);
+        setSaveStatus("saved");
+      } catch (e) {
+        console.error("Autosave failed", e);
+        setSaveStatus("offline");
+      }
+    };
+
+    const delay = setTimeout(triggerSave, 2000); // 2s debounce
+    return () => clearTimeout(delay);
+  }, [state, versions, isLoaded]);
 
   const updateState = (updates: Partial<ProtocolState>) => {
     setState(prev => {
       let next = { ...prev, ...updates };
       
-      if (next.hypothesis.isAuto) {
-        next.hypothesis = { ...next.hypothesis, ...generateHypotheses(next.pico) };
-      }
-      if (next.studyType.isAuto) {
-        next.studyType = { ...next.studyType, ...recommendStudyType(next.pico) };
-      }
-      
+      // Local reactive triggers for calculator
       const zAlpha = next.sampleSizeParams.alpha <= 0.01 ? 2.576 : next.sampleSizeParams.alpha <= 0.05 ? 1.96 : 1.645;
       const zBeta = next.sampleSizeParams.power >= 0.90 ? 1.282 : next.sampleSizeParams.power >= 0.80 ? 0.842 : 0.524;
       if (next.sampleSizeParams.effectSize > 0) {
         const nPerArm = Math.ceil((2 * Math.pow(zAlpha + zBeta, 2)) / Math.pow(next.sampleSizeParams.effectSize, 2));
         next.sampleSizeResult = { perArm: nPerArm, total: nPerArm + Math.ceil(nPerArm * next.sampleSizeParams.ratio) };
-      }
-
-      if (next.statisticalPlan.isAuto) {
-        const rec = recommendStatisticalTest(next.studyType.recommended, next.pico.outcome || "");
-        next.statisticalPlan = { ...next.statisticalPlan, recommendedTest: rec?.value || "Pending", primaryEndpoint: next.pico.outcome || "", aiMetadata: rec };
       }
 
       return next;
@@ -158,6 +331,25 @@ export function StudyDesignStudio() {
   const saveVersion = () => {
     const v = { id: `v${versions.length + 1}`, timestamp: new Date().toISOString(), state };
     setVersions([v, ...versions]);
+  };
+
+  const isStepCompleted = (i: number) => {
+    switch (i) {
+      case 0: return !!state.researchQuestion;
+      case 1: return !!state.handoffData;
+      case 2: return !!(state.pico.population && state.pico.intervention && state.pico.outcome);
+      case 3: return !!state.hypothesis.primary;
+      case 4: return state.studyType.recommended !== "Pending" && state.studyType.recommended !== "Pending PICO Definition";
+      case 5: return state.sampleSizeResult.total > 0;
+      case 6: return state.statisticalPlan.recommendedTest !== "Pending";
+      case 7: return state.criteria.inclusion.length > 0 || state.criteria.exclusion.length > 0;
+      case 8: return state.confounders.length > 0;
+      case 9: return !!state.ayurveda.formulation;
+      case 10: return state.timeline.length > 0;
+      case 11: return state.ethics.some(e => e.checked);
+      case 12: return false;
+      default: return false;
+    }
   };
 
   if (!isLoaded) return null;
@@ -181,7 +373,13 @@ export function StudyDesignStudio() {
                   state.intelligence.completeness > (i/STEPS.length)*100 ? "text-slate-700 hover:bg-slate-100" : "text-slate-400 hover:bg-slate-50"}`}
             >
               <div className="flex items-center gap-2">
-                {activeStep === i ? <Edit3 size={14} className="opacity-70" /> : state.intelligence.completeness > (i/STEPS.length)*100 ? <CheckCircle2 size={14} className="text-success opacity-0 group-hover:opacity-100 transition-opacity" /> : <Circle size={14} className="opacity-50" />}
+                {activeStep === i ? (
+                  <Edit3 size={14} className="opacity-70" />
+                ) : isStepCompleted(i) ? (
+                  <CheckCircle2 size={14} className="text-emerald-500" />
+                ) : (
+                  <Circle size={14} className="opacity-40" />
+                )}
                 {step.label}
               </div>
             </button>
@@ -208,14 +406,38 @@ export function StudyDesignStudio() {
         </div>
       </div>
 
-      {/* PANE 2: ACTIVE WORKSPACE (AI ASSISTANT INLINE) */}
+      {/* PANE 2: ACTIVE WORKSPACE */}
       <div className="flex-1 flex flex-col overflow-auto bg-slate-50/50 relative">
         <div className="p-6 max-w-3xl mx-auto w-full flex flex-col gap-6 flex-1">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h2 className="text-2xl font-black text-slate-800">{STEPS[activeStep].label}</h2>
-              <p className="text-sm text-slate-500">Step {activeStep + 1} of {STEPS.length}</p>
+          {/* Enhanced Header with Title Renamer and Save status badges */}
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-4">
+            <div className="flex-1 mr-4">
+              <input
+                type="text"
+                className="text-xl font-bold bg-transparent border-none text-slate-800 w-full focus:outline-none focus:ring-1 focus:ring-slate-300 rounded px-1"
+                value={state.title || "Untitled Study Protocol"}
+                onChange={e => updateState({ title: e.target.value })}
+                placeholder="Untitled Study Protocol"
+              />
+              <p className="text-xs text-slate-500 mt-1">Step {activeStep + 1} of {STEPS.length}: {STEPS[activeStep].label}</p>
+            </div>
+            
+            <div className="flex items-center gap-3 flex-shrink-0">
+              {intelligenceMode === "ai" ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  AI-enhanced analysis
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200" title="Running client-side offline engines.">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  Offline fallback
+                </span>
+              )}
+              
+              {saveStatus === "saving" && <span className="text-xs text-slate-400 italic">Saving...</span>}
+              {saveStatus === "saved" && <span className="text-xs text-slate-400">Autosaved</span>}
+              {saveStatus === "offline" && <span className="text-xs text-amber-500">Local Cache</span>}
             </div>
           </div>
 
@@ -242,18 +464,23 @@ export function StudyDesignStudio() {
         </div>
       </div>
 
-      {/* PANE 3: INTELLIGENCE DASHBOARD / LIVE PREVIEW */}
+      {/* PANE 3: AUDIT & INTELLIGENCE DASHBOARD / LIVE PREVIEW */}
       <div className="w-[400px] flex flex-col border-l border-border-light bg-surface shadow-xl z-20 flex-shrink-0">
-        <div className="flex border-b border-border-light">
-          <button className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 ${rightPaneView === 'intelligence' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-slate-500 hover:bg-slate-50'}`} onClick={() => setRightPaneView('intelligence')}>
-            <Brain size={16} /> Protocol Intelligence
+        <div className="flex border-b border-border-light flex-shrink-0">
+          <button className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-1.5 ${rightPaneView === 'intelligence' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-slate-500 hover:bg-slate-50'}`} onClick={() => setRightPaneView('intelligence')}>
+            <Brain size={14} /> Audit
           </button>
-          <button className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 ${rightPaneView === 'document' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-slate-500 hover:bg-slate-50'}`} onClick={() => setRightPaneView('document')}>
-            <FileText size={16} /> Live Protocol
+          <button className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-1.5 ${rightPaneView === 'document' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-slate-500 hover:bg-slate-50'}`} onClick={() => setRightPaneView('document')}>
+            <FileText size={14} /> Protocol
+          </button>
+          <button className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-1.5 ${rightPaneView === 'reviewer' ? 'text-emerald-700 border-b-2 border-emerald-700 bg-emerald-50/50' : 'text-slate-500 hover:bg-slate-50'}`} onClick={() => setRightPaneView('reviewer')}>
+            <ShieldAlert size={14} /> Review
           </button>
         </div>
         <div className="flex-1 overflow-auto bg-slate-50">
-          {rightPaneView === 'intelligence' ? <IntelligenceDashboard state={state} setActiveStep={setActiveStep} /> : <LivePreview activeStep={activeStep} state={state} />}
+          {rightPaneView === 'intelligence' && <IntelligenceDashboard state={state} setActiveStep={setActiveStep} loading={loadingIntelligence} />}
+          {rightPaneView === 'document' && <LivePreview state={state} />}
+          {rightPaneView === 'reviewer' && <ReviewerFeedbackPanel state={state} />}
         </div>
       </div>
 
@@ -274,19 +501,115 @@ function StepResearchQuestion({ state, updateState }: StepProps) {
 }
 
 function StepEvidenceHandoff({ state }: { state: ProtocolState }) {
+  const data: HandoffPayload | null = state.handoffData;
+  const [validation, setValidation] = React.useState<any>(null);
+  const [validating, setValidating] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!data) return;
+    setValidating(true);
+    validateEvidenceHandoff(data as any)
+      .then(setValidation)
+      .catch(() => setValidation(null))
+      .finally(() => setValidating(false));
+  }, [data?.collection_id]);
+
+  if (!data) {
+    return (
+      <div className="flex flex-col gap-4 animate-in fade-in">
+        <div className="border-2 border-dashed border-slate-200 rounded-xl p-10 flex flex-col items-center text-center bg-white">
+          <Database size={36} className="text-slate-300 mb-3" />
+          <h4 className="text-sm font-bold text-slate-700">No RISHI Evidence Handoff</h4>
+          <p className="text-xs text-slate-400 mt-1 max-w-xs leading-relaxed">
+            Navigate to <strong>Library / RECAP</strong> and click <em>Design Study in BRAHMA</em> on any collection to pre-fill this protocol with evidence.
+          </p>
+          <p className="text-[10px] text-slate-300 mt-4 italic">You can still create a protocol manually — evidence handoff is optional.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const sources = data.sources || [];
+  const gaps = data.gaps || [];
+
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in">
-      {state.handoffData ? (
-        <Card className="border-success/30 bg-success-light/10">
-          <div className="flex items-center gap-2 mb-4 text-success font-bold"><CheckCircle2 size={18} /> Evidence Imported from RECAP</div>
-          <div className="text-sm space-y-3 text-slate-700">
-            <div className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200"><span className="font-semibold">Collection ID:</span><Badge color="success">{state.handoffData.id}</Badge></div>
-            <div className="bg-white p-3 rounded-lg border border-slate-200"><span className="font-semibold block mb-1">RISHI Hypothesis Seed:</span><p className="italic text-slate-500">{state.handoffData.hypothesisSeed}</p></div>
+    <div className="flex flex-col gap-5 animate-in fade-in">
+      {/* Adapter badge */}
+      <Card className="border-success/30 bg-emerald-50/20">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2 text-success font-bold text-sm">
+            <CheckCircle2 size={16} /> Evidence Handoff from RISHI Adapter
           </div>
-        </Card>
-      ) : (
-        <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center text-center bg-white"><Database size={32} className="text-slate-300 mb-2" /><h4 className="text-sm font-semibold text-slate-700">No evidence found.</h4></div>
+          {validating ? (
+            <Badge color="warning">Validating...</Badge>
+          ) : validation?.ready_for_brahma ? (
+            <Badge color="success">✓ Validated — {validation.paper_count} sources, {validation.high_quality_sources} high-quality</Badge>
+          ) : validation && !validation.ready_for_brahma ? (
+            <Badge color="danger">Validation Issues</Badge>
+          ) : null}
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs text-slate-700">
+          <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+            <span className="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Collection ID</span>
+            <span className="font-mono">{data.collection_id}</span>
+          </div>
+          <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+            <span className="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Query Used</span>
+            <span className="truncate block">{(data as any).query || "RISHI discovery pipeline"}</span>
+          </div>
+        </div>
+        <div className="bg-white p-3 rounded-lg border border-slate-200 mt-2">
+          <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">RISHI Hypothesis Seed</span>
+          <p className="text-sm italic text-slate-700 leading-snug">{data.hypothesis_seed}</p>
+        </div>
+        {(data as any).summary && (
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mt-2">
+            <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Evidence Summary</span>
+            <p className="text-xs text-slate-600">{(data as any).summary}</p>
+          </div>
+        )}
+      </Card>
+
+      {/* Research Gaps */}
+      {gaps.length > 0 && (
+        <div>
+          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2">Research Gaps ({gaps.length})</h3>
+          <div className="flex flex-col gap-1.5">
+            {gaps.map((gap: string, i: number) => (
+              <div key={i} className="flex items-start gap-2 bg-amber-50 border border-amber-200 p-2.5 rounded-lg">
+                <AlertTriangle size={12} className="text-amber-500 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-800">{gap}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
+
+      {/* Sources */}
+      <div>
+        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2">Linked Evidence Sources ({sources.length})</h3>
+        <div className="flex flex-col gap-2">
+          {sources.map((src: any, idx: number) => (
+            <div key={idx} className="bg-white p-3 border border-slate-200 rounded-xl shadow-sm hover:border-slate-300 transition-colors">
+              <div className="flex justify-between items-start gap-3">
+                <h4 className="text-xs font-bold text-slate-800 leading-snug">{src.title}</h4>
+                <Badge color={src.evidenceLevel === "High" ? "success" : "primary"} className="flex-shrink-0 text-[9px]">
+                  {src.evidenceLevel}
+                </Badge>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-0.5">{src.authors} • {src.year}{src.journal ? ` • ${src.journal}` : ""}</p>
+              {src.doi && <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-1 py-0.5 rounded mt-1 inline-block">DOI: {src.doi}</span>}
+              {src.tags?.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {src.tags.map((tag: string) => (
+                    <span key={tag} className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -306,14 +629,14 @@ function StepPicoBuilder({ state, updateState }: StepProps) {
 function AIExplanation({ meta }: { meta?: { value: string, confidence: number, reasoning: string, improvements: string[] } }) {
   if (!meta) return null;
   return (
-    <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mt-4 shadow-inner">
+    <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-4 mt-4 shadow-inner">
       <div className="flex justify-between items-center mb-3">
         <div className="flex items-center gap-2 text-primary font-bold text-sm"><Brain size={16} /> AI Architect Reasoning</div>
         <div className={`px-2 py-1 rounded text-xs font-bold ${meta.confidence >= 90 ? 'bg-success/20 text-success' : meta.confidence >= 70 ? 'bg-warning/20 text-warning-dark' : 'bg-danger/20 text-danger'}`}>{meta.confidence}% Confidence</div>
       </div>
-      <p className="text-sm text-slate-700 mb-3 leading-relaxed">{meta.reasoning}</p>
+      <p className="text-xs text-slate-700 mb-3 leading-relaxed">{meta.reasoning}</p>
       {meta.improvements.length > 0 && (
-        <div className="bg-white/60 p-3 rounded text-xs text-slate-600 border border-blue-100">
+        <div className="bg-white/60 p-3 rounded text-[11px] text-slate-600 border border-blue-100">
           <strong className="block mb-1 text-slate-700">Actionable Improvements:</strong>
           <ul className="list-disc list-inside space-y-1">{meta.improvements.map((imp, idx) => <li key={idx}>{imp}</li>)}</ul>
         </div>
@@ -472,38 +795,89 @@ function StepEthics({ state, updateState }: StepProps) {
 }
 
 function StepExport({ state }: { state: ProtocolState }) {
-  const copyMd = () => { navigator.clipboard.writeText("Protocol copied!"); alert("Copied!"); };
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const handleCopyMarkdown = async () => {
+    setExporting("markdown");
+    try {
+      const res = await exportProtocolAPI(state, "markdown");
+      await navigator.clipboard.writeText(res.content);
+      alert("Professional Markdown protocol copied to clipboard!");
+    } catch (e) {
+      alert("Failed to export via backend AI. Fallback Markdown copying...");
+      await navigator.clipboard.writeText(JSON.stringify(state, null, 2));
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleDownloadHTML = async () => {
+    setExporting("html");
+    try {
+      const res = await exportProtocolAPI(state, "html");
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(res.content);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => printWindow.print(), 500);
+      }
+    } catch (e) {
+      alert("HTML printout compilation failed.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
   const downloadJSON = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
-    const el = document.createElement('a'); el.setAttribute("href", dataStr); el.setAttribute("download", "protocol_export.json");
+    const el = document.createElement('a'); el.setAttribute("href", dataStr); el.setAttribute("download", `${state.title || 'study'}_protocol.json`);
     document.body.appendChild(el); el.click(); el.remove();
   };
+
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center animate-in zoom-in-95">
-      <div className="w-24 h-24 bg-success/10 text-success rounded-full flex items-center justify-center shadow-lg shadow-success/20 mb-6"><CheckCircle2 size={48} /></div>
-      <h3 className="text-3xl font-black text-slate-800 mb-2">Protocol Finalized</h3>
-      <p className="text-slate-500 max-w-sm mx-auto mb-8">Your clinical study protocol is structurally complete and ready for export to EDC systems.</p>
-      <div className="flex gap-4 w-full max-w-md">
-        <Button onClick={copyMd} className="flex-1 h-12 text-sm font-bold bg-slate-800 hover:bg-slate-900 text-white"><Copy size={16} className="mr-2" /> Markdown</Button>
-        <Button onClick={downloadJSON} className="flex-1 h-12 text-sm font-bold bg-accent hover:bg-accent-dark text-white"><Download size={16} className="mr-2" /> JSON</Button>
+    <div className="flex flex-col items-center justify-center py-12 text-center animate-in zoom-in-95 bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
+      <div className="w-20 h-20 bg-success/10 text-success rounded-full flex items-center justify-center shadow-lg shadow-success/20 mb-6"><CheckCircle2 size={40} /></div>
+      <h3 className="text-2xl font-black text-slate-800 mb-2">Protocol Finalized</h3>
+      <p className="text-slate-500 max-w-sm mx-auto mb-8 text-sm">Your clinical study protocol is structurally complete and verified against international and AYUSH guidelines.</p>
+      
+      <div className="flex flex-col gap-3 w-full max-w-sm">
+        <Button onClick={handleCopyMarkdown} disabled={exporting !== null} className="h-11 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white flex items-center justify-center gap-2">
+          {exporting === "markdown" ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Copy size={14} />}
+          Copy Professional Markdown
+        </Button>
+        <Button onClick={handleDownloadHTML} disabled={exporting !== null} className="h-11 text-xs font-bold bg-accent hover:bg-accent-dark text-white flex items-center justify-center gap-2">
+          {exporting === "html" ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download size={14} />}
+          Download / Print HTML Report
+        </Button>
+        <Button onClick={downloadJSON} className="h-11 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 flex items-center justify-center gap-2">
+          <Download size={14} />
+          Download Raw JSON
+        </Button>
       </div>
     </div>
   );
 }
 
-
 // --- PANE 3 COMPONENTS ---
 
-function IntelligenceDashboard({ state, setActiveStep }: { state: ProtocolState, setActiveStep: (s: number) => void }) {
+function IntelligenceDashboard({ state, setActiveStep, loading }: { state: ProtocolState, setActiveStep: (s: number) => void, loading?: boolean }) {
   const intel = state.intelligence;
   
   return (
-    <div className="p-6 flex flex-col gap-6 animate-in fade-in h-full overflow-auto bg-slate-50">
+    <div className="p-6 flex flex-col gap-6 animate-in fade-in h-full overflow-auto bg-slate-50 relative">
+      {loading && (
+        <div className="absolute top-2 right-4 flex items-center gap-1 text-[10px] text-primary bg-primary-light px-2 py-0.5 rounded animate-pulse">
+          <RefreshCw className="w-3 h-3 animate-spin" />
+          Analyzing...
+        </div>
+      )}
+
       {/* Score Cards */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4 flex-shrink-0">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Quality Score</div>
-          <div className={`text-5xl font-black ${intel.qualityScore >= 80 ? 'text-success' : intel.qualityScore >= 50 ? 'text-warning' : 'text-danger'}`}>{intel.qualityScore}</div>
+          <div className={`text-5xl font-black ${intel.qualityScore >= 85 ? 'text-success' : intel.qualityScore >= 60 ? 'text-warning' : 'text-danger'}`}>{intel.qualityScore}</div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Completeness</div>
@@ -518,17 +892,27 @@ function IntelligenceDashboard({ state, setActiveStep }: { state: ProtocolState,
           {intel.risks.length === 0 ? (
             <div className="text-sm text-slate-400 italic bg-white p-4 border border-slate-200 rounded-lg text-center">No major methodological risks detected.</div>
           ) : (
-            intel.risks.map(r => (
-              <div key={r.id} className={`bg-white border-l-4 ${r.severity === 'High' ? 'border-l-danger' : r.severity === 'Medium' ? 'border-l-warning' : 'border-l-blue-400'} p-3 rounded-r-lg shadow-sm`}>
+            intel.risks.map((r, idx) => (
+              <div key={idx} className={`bg-white border-l-4 ${r.severity === 'High' ? 'border-l-danger' : r.severity === 'Medium' ? 'border-l-warning' : 'border-l-blue-400'} p-3 rounded-r-lg shadow-sm`}>
                 <div className="flex items-center gap-2 mb-1">
                   <Badge color={r.severity === 'High' ? 'danger' : r.severity === 'Medium' ? 'warning' : 'primary'} className="text-[10px] py-0 px-1">{r.severity} Risk</Badge>
                 </div>
                 <p className="text-xs text-slate-700 font-medium mb-2">{r.message}</p>
                 <button 
                   onClick={() => {
-                    const stepIdx = STEPS.findIndex(s => s.id === (r.fieldId === 'pico' ? 'p' : r.fieldId === 'samplesize' ? 'ss' : r.fieldId === 'confounders' ? 'co' : r.fieldId === 'ethics' ? 'et' : 'q'));
+                    const fid = r.fieldId;
+                    const stepIdx = STEPS.findIndex(s => s.id === (
+                      fid === 'pico' ? 'p' : 
+                      fid === 'samplesize' ? 'ss' : 
+                      fid === 'confounders' ? 'co' : 
+                      fid === 'ethics' ? 'et' : 
+                      fid === 'criteria' ? 'cr' :
+                      fid === 'ayurveda' ? 'ay' :
+                      fid === 'statisticalplan' ? 'sp' :
+                      fid === 'hypothesis' ? 'hyp' : 'q'
+                    ));
                     if(stepIdx >= 0) setActiveStep(stepIdx);
-                  }} 
+                  }}
                   className={`text-[10px] font-bold px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors w-full text-left flex justify-between items-center`}
                 >
                   Fix: {r.fix} <ChevronRight size={10} />
@@ -543,8 +927,8 @@ function IntelligenceDashboard({ state, setActiveStep }: { state: ProtocolState,
       <div>
         <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1"><CheckSquare size={14} /> Guideline Compliance</h3>
         <div className="flex flex-col gap-2">
-          {intel.compliance.map(c => (
-            <div key={c.id} className="bg-white p-3 border border-slate-200 rounded-lg shadow-sm flex items-start gap-3">
+          {intel.compliance.map((c, idx) => (
+            <div key={idx} className="bg-white p-3 border border-slate-200 rounded-lg shadow-sm flex items-start gap-3">
               <div className="mt-0.5">
                 {c.status === 'Fulfilled' ? <CheckCircle2 size={16} className="text-success" /> : c.status === 'Missing' ? <X size={16} className="text-danger" /> : <AlertTriangle size={16} className="text-warning" />}
               </div>
@@ -560,44 +944,44 @@ function IntelligenceDashboard({ state, setActiveStep }: { state: ProtocolState,
   );
 }
 
-function LivePreview({ state }: { activeStep: number, state: ProtocolState }) {
+function LivePreview({ state }: { state: ProtocolState }) {
   return (
     <div className="w-full bg-white h-full overflow-auto flex flex-col text-slate-800 font-serif p-8">
       <Badge color="accent" className="mb-4 w-max">DRAFT PROTOCOL</Badge>
-      <h1 className="text-2xl font-bold leading-tight mb-2">
-        {state.pico.intervention && state.pico.population ? `Efficacy of ${state.pico.intervention} in ${state.pico.population}` : "Study Protocol"}
+      <h1 className="text-xl font-bold leading-tight mb-2">
+        {state.pico.intervention && state.pico.population ? `Efficacy of ${state.pico.intervention} in ${state.pico.population}` : state.title || "Study Protocol"}
       </h1>
-      <p className="text-xs text-slate-500 font-mono uppercase tracking-wider border-b border-slate-200 pb-6 mb-6">ID: BRH-24-{(state.intelligence.qualityScore * 13).toString().padStart(4, '0')}</p>
+      <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider border-b border-slate-200 pb-4 mb-4">ID: BRH-24-{(state.intelligence.qualityScore * 13).toString().padStart(4, '0')}</p>
       
       <div className="space-y-6">
         <section>
-          <h2 className="text-sm font-bold text-slate-900 mb-2 uppercase tracking-wide">1. Background & Rationale</h2>
-          <p className="text-sm text-slate-600 leading-relaxed">{state.researchQuestion || <span className="italic text-slate-400">[Pending]</span>}</p>
+          <h2 className="text-xs font-bold text-slate-900 mb-2 uppercase tracking-wide">1. Background & Rationale</h2>
+          <p className="text-xs text-slate-600 leading-relaxed">{state.researchQuestion || <span className="italic text-slate-400">[Pending Rationale]</span>}</p>
         </section>
 
         <section>
-          <h2 className="text-sm font-bold text-slate-900 mb-2 uppercase tracking-wide">2. Objectives & Hypotheses</h2>
-          <div className="text-sm mb-2"><strong className="text-slate-900">Primary Objective:</strong> {state.hypothesis.primaryObjective}</div>
-          <ul className="list-disc list-inside text-sm text-slate-600 space-y-1 mb-3">
+          <h2 className="text-xs font-bold text-slate-900 mb-2 uppercase tracking-wide">2. Objectives & Hypotheses</h2>
+          <div className="text-xs mb-2"><strong className="text-slate-900">Primary Objective:</strong> {state.hypothesis.primaryObjective}</div>
+          <ul className="list-disc list-inside text-[11px] text-slate-600 space-y-1 mb-3">
             <li><strong>P:</strong> {state.pico.population || "TBD"}</li>
             <li><strong>I:</strong> {state.pico.intervention || "TBD"}</li>
             <li><strong>C:</strong> {state.pico.comparator || "None"}</li>
             <li><strong>O:</strong> {state.pico.outcome || "TBD"}</li>
           </ul>
-          <div className="bg-slate-50 p-3 border-l-2 border-slate-300 text-xs space-y-2">
+          <div className="bg-slate-50 p-3 border-l-2 border-slate-350 text-[11px] space-y-2">
             <p><strong>H1:</strong> {state.hypothesis.primary}</p>
             <p><strong>H0:</strong> {state.hypothesis.nullHypothesis}</p>
           </div>
         </section>
 
         <section>
-          <h2 className="text-sm font-bold text-slate-900 mb-2 uppercase tracking-wide">3. Study Design</h2>
-          <p className="text-sm text-slate-600 mb-3">Architected as a <strong>{state.studyType.recommended || "TBD"}</strong>.</p>
-          <div className="bg-slate-50 p-3 rounded border border-slate-200 mb-3 text-xs text-slate-600">
+          <h2 className="text-xs font-bold text-slate-900 mb-2 uppercase tracking-wide">3. Study Design</h2>
+          <p className="text-xs text-slate-600 mb-3">Architected as a <strong>{state.studyType.recommended || "TBD"}</strong>.</p>
+          <div className="bg-slate-50 p-3 rounded border border-slate-200 mb-3 text-[11px] text-slate-600">
             <strong className="text-slate-900 block mb-1">Sample Size</strong>
             N={state.sampleSizeResult.total} ({state.sampleSizeResult.perArm} per arm) for {Math.round(state.sampleSizeParams.power*100)}% power.
           </div>
-          <div className="text-xs text-slate-600 space-y-1">
+          <div className="text-[11px] text-slate-600 space-y-1">
             <p><strong>Primary Analysis:</strong> {state.statisticalPlan.recommendedTest}</p>
             <p><strong>Adjustments:</strong> {state.statisticalPlan.regression}</p>
           </div>
@@ -605,14 +989,67 @@ function LivePreview({ state }: { activeStep: number, state: ProtocolState }) {
 
         {state.ayurveda.formulation && (
           <section>
-            <h2 className="text-sm font-bold text-slate-900 mb-2 uppercase tracking-wide flex items-center gap-1"><Leaf size={14} className="text-success" /> AYUSH Intervention</h2>
-            <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 bg-emerald-50 p-3 rounded border border-emerald-100">
+            <h2 className="text-xs font-bold text-slate-900 mb-2 uppercase tracking-wide flex items-center gap-1"><Leaf size={12} className="text-success" /> AYUSH Intervention</h2>
+            <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 bg-emerald-50/50 p-3 rounded border border-emerald-100">
               <div><strong>Formulation:</strong> {state.ayurveda.formulation}</div>
               <div><strong>Dosage:</strong> {state.ayurveda.dosage}</div>
               <div><strong>Anupana:</strong> {state.ayurveda.anupana}</div>
               <div><strong>Prakriti:</strong> {state.ayurveda.prakriti}</div>
             </div>
           </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReviewerFeedbackPanel({ state }: { state: ProtocolState }) {
+  const highRisks = state.intelligence.risks.filter(r => r.severity === "High");
+  const medRisks = state.intelligence.risks.filter(r => r.severity === "Medium");
+
+  return (
+    <div className="p-6 flex flex-col gap-6 animate-in fade-in bg-slate-50 h-full overflow-auto text-slate-800 text-xs">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex-shrink-0">
+        <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-1">IRB Reviewer Verdict</h4>
+        <div className="flex items-center justify-between mt-2">
+          <span className={`text-xs font-black ${highRisks.length > 0 ? "text-danger" : "text-success"}`}>
+            {highRisks.length > 0 ? "REQUIRES MAJOR REVISIONS" : "PROVISIONALLY APPROVED"}
+          </span>
+          <Badge color={highRisks.length > 0 ? "danger" : "success"}>
+            Score: {state.intelligence.qualityScore}/100
+          </Badge>
+        </div>
+      </div>
+
+      <div className="space-y-4 flex-shrink-0">
+        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Methodology Review</h3>
+        <div className="bg-white p-4 border border-slate-200 rounded-xl space-y-3">
+          <p>The study proposes evaluating <strong>{state.pico.intervention || "[Intervention]"}</strong> on <strong>{state.pico.outcome || "[Outcome]"}</strong> in <strong>{state.pico.population || "[Population]"}</strong>.</p>
+          
+          <div className="pt-2 border-t border-slate-100">
+            <strong className="text-[10px] text-slate-400 block uppercase mb-1">Clinical Rationale Check</strong>
+            <p className="italic text-slate-600">"{state.researchQuestion || "Rationale is blank."}"</p>
+          </div>
+          
+          <div className="pt-2 border-t border-slate-100">
+            <strong className="text-[10px] text-slate-400 block uppercase mb-1">Statistical Test Appropriateness</strong>
+            <p>The selected test <strong>{state.statisticalPlan.recommendedTest}</strong> is {highRisks.length > 0 ? "inappropriate given the high baseline risk profile." : "statistically sound for this architecture."}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Actionable Recommendations</h3>
+        {state.intelligence.risks.length === 0 ? (
+          <p className="text-[10px] text-slate-500 italic bg-white p-4 border border-slate-200 rounded-xl text-center">No structural adjustments needed.</p>
+        ) : (
+          state.intelligence.risks.map((r, idx) => (
+            <div key={idx} className="bg-white p-3 border border-slate-200 rounded-lg shadow-sm">
+              <span className="font-bold text-slate-700 block mb-1">Recommendation {idx+1}:</span>
+              <p className="text-slate-600 mb-2">{r.message}</p>
+              <div className="bg-slate-50 p-2 rounded text-slate-600 font-mono text-[10px]"><strong>Fix:</strong> {r.fix}</div>
+            </div>
+          ))
         )}
       </div>
     </div>

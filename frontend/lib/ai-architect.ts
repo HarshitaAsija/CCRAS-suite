@@ -30,6 +30,8 @@ export interface ProtocolIntelligence {
 }
 
 export interface ProtocolState {
+  id?: number;
+  title?: string;
   researchQuestion: string;
   pico: { population: string; intervention: string; comparator: string; outcome: string };
   hypothesis: { 

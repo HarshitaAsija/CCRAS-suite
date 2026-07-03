@@ -1,10 +1,12 @@
 import logging
 from app.routers.entities import router as entities_router
+from app.routers.study import router as study_router
+from app.routers.study_design_ai import router as study_design_ai_router
+from app.routers.evidence_adapter import router as evidence_adapter_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-
 
 logger = logging.getLogger(__name__)
 
@@ -13,17 +15,27 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
+
+@app.on_event("startup")
+def startup_event():
+    try:
+        from app.db.base import Base
+        from app.db.session import engine
+        import app.models  # Load all models to ensure registration
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables initialized/verified.")
+    except Exception as e:
+        logger.error(f"Failed to auto-initialize database tables: {e}")
+
 app.include_router(entities_router, prefix="/api/v1")
+app.include_router(study_router, prefix=settings.API_V1_STR)
+app.include_router(study_design_ai_router, prefix=settings.API_V1_STR)
+app.include_router(evidence_adapter_router, prefix=settings.API_V1_STR)
 # CORS
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-    ],
+    allow_origin_regex="https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

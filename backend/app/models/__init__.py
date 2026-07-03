@@ -6,6 +6,7 @@ from .entity_alias import EntityAlias
 from .paper_entity import PaperEntity
 from .relationship_instance import RelationshipInstance
 from .pipeline_task import PipelineTask
+from .study import Study
 
 __all__ = [
     "Paper",
@@ -15,4 +16,5 @@ __all__ = [
     "PaperEntity",
     "RelationshipInstance",
     "PipelineTask",
+    "Study",
 ]
