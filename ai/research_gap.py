@@ -23,22 +23,249 @@ DB_CONFIG = {
 OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
 OLLAMA_MODEL = "mistral"
-# Requires: ollama pull nomic-embed-text=
 OLLAMA_EMBED_MODEL = "nomic-embed-text"
 
-# CPU inference (no dedicated GPU) can genuinely take several minutes for a
-# prompt covering many papers. 180s was too aggressive and was killing
-# otherwise-working runs. Override with OLLAMA_TIMEOUT env var if needed.
 OLLAMA_GENERATE_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", 600))
 OLLAMA_EMBED_TIMEOUT = int(os.environ.get("OLLAMA_EMBED_TIMEOUT", 120))
 
-# Absolute path so the output file is never "lost" in whatever directory
-# you happened to run the script from.
 OUTPUT_JSON_PATH = os.path.join(os.getcwd(), "research_gaps_output.json")
 
-# Candidate column names to auto-detect in your `papers` table.
 YEAR_COLUMN_CANDIDATES = ["year", "published_year", "publication_year", "pub_year"]
 PMID_COLUMN_CANDIDATES = ["pmid", "pubmed_id", "pm_id"]
+
+
+# -------------------------
+# Ayurveda + Biomedical Synonym Map
+# Maps common/Ayurveda names → list of all known
+# scientific names, synonyms, and active compounds.
+# Add more entries as you discover missing ones.
+# -------------------------
+AYURVEDA_SYNONYMS = {
+    # ── Core Ayurveda herbs ──
+    "turmeric":         ["turmeric", "curcumin", "curcuma longa",
+                         "curcuminoid", "haridra"],
+    "haridra":          ["haridra", "turmeric", "curcumin",
+                         "curcuma longa"],
+    "mulethi":          ["mulethi", "licorice", "liquorice",
+                         "glycyrrhiza glabra", "glycyrrhizin",
+                         "glycyrrhizinic acid", "yashtimadhu"],
+    "yashtimadhu":      ["yashtimadhu", "mulethi", "licorice",
+                         "glycyrrhiza glabra"],
+    "ashwagandha":      ["ashwagandha", "withania somnifera",
+                         "withanolide", "withaferin",
+                         "indian ginseng"],
+    "brahmi":           ["brahmi", "bacopa monnieri", "bacoside",
+                         "bacosides", "water hyssop"],
+    "neem":             ["neem", "azadirachta indica", "nimbidin",
+                         "nimbin", "azadirachtin", "margosa"],
+    "giloy":            ["giloy", "guduchi", "tinospora cordifolia",
+                         "tinosporin", "heart-leaved moonseed"],
+    "guduchi":          ["guduchi", "giloy", "tinospora cordifolia"],
+    "amla":             ["amla", "amalaki", "phyllanthus emblica",
+                         "emblica officinalis", "indian gooseberry",
+                         "emblicanin"],
+    "amalaki":          ["amalaki", "amla", "phyllanthus emblica",
+                         "emblica officinalis"],
+    "shatavari":        ["shatavari", "asparagus racemosus",
+                         "shatavarin", "wild asparagus"],
+    "triphala":         ["triphala", "haritaki", "bibhitaki",
+                         "amalaki", "terminalia chebula",
+                         "terminalia bellirica",
+                         "phyllanthus emblica"],
+    "haritaki":         ["haritaki", "terminalia chebula",
+                         "chebulic myrobalan", "chebulagic acid"],
+    "tulsi":            ["tulsi", "holy basil", "ocimum sanctum",
+                         "ocimum tenuiflorum", "eugenol"],
+    "shilajit":         ["shilajit", "mumijo", "mumio",
+                         "fulvic acid", "humic acid",
+                         "mineral pitch"],
+    "guggul":           ["guggul", "commiphora mukul",
+                         "guggulsterone", "commiphora wightii"],
+    "punarnava":        ["punarnava", "boerhavia diffusa",
+                         "boerhavia", "spreading hogweed"],
+    "manjistha":        ["manjistha", "rubia cordifolia",
+                         "munjistin", "indian madder"],
+    "vasaka":           ["vasaka", "adhatoda vasica",
+                         "malabar nut", "justicia adhatoda",
+                         "vasicine"],
+    "karela":           ["karela", "bitter melon",
+                         "momordica charantia",
+                         "bitter gourd", "charantin"],
+    "methi":            ["methi", "fenugreek",
+                         "trigonella foenum-graecum",
+                         "trigonella", "diosgenin"],
+    "ajwain":           ["ajwain", "carom seeds",
+                         "trachyspermum ammi",
+                         "bishop's weed", "thymol"],
+    "kalmegh":          ["kalmegh", "andrographis paniculata",
+                         "andrographolide", "king of bitters"],
+    "shankhpushpi":     ["shankhpushpi", "convolvulus pluricaulis",
+                         "convolvulus prostratus"],
+    "jatamansi":        ["jatamansi", "nardostachys jatamansi",
+                         "spikenard", "nardostachys"],
+    "bhringraj":        ["bhringraj", "eclipta alba",
+                         "eclipta prostrata", "wedelolactone"],
+    "vidanga":          ["vidanga", "embelia ribes",
+                         "embelin", "false black pepper"],
+    "pippali":          ["pippali", "long pepper",
+                         "piper longum", "piperine"],
+    "marich":           ["marich", "black pepper",
+                         "piper nigrum", "piperine"],
+    "shunthi":          ["shunthi", "ginger", "zingiber officinale",
+                         "gingerol", "shogaol", "saunth"],
+    "ginger":           ["ginger", "zingiber officinale",
+                         "gingerol", "shogaol", "shunthi"],
+    "garlic":           ["garlic", "allium sativum",
+                         "allicin", "ajoene", "lahsun"],
+    "lahsun":           ["lahsun", "garlic", "allium sativum",
+                         "allicin"],
+    "kutki":            ["kutki", "picrorhiza kurroa",
+                         "picrorhiza scrophulariiflora",
+                         "kutkin", "picroliv"],
+    "saraswatarishta":  ["saraswatarishta", "sarasvatarishta",
+                         "brahmi", "bacopa"],
+    "dashmool":         ["dashmool", "dashamula",
+                         "bael", "aegle marmelos",
+                         "oroxylum indicum"],
+    "pushkarmool":      ["pushkarmool", "inula racemosa",
+                         "inulin", "alantolactone"],
+    "arjuna":           ["arjuna", "terminalia arjuna",
+                         "arjunolic acid", "arjunetin"],
+    "chirata":          ["chirata", "swertia chirata",
+                         "swertiamarin", "amarogentin"],
+
+    # ── Panchakarma / treatments ──
+    "panchakarma":      ["panchakarma", "virechana", "basti",
+                         "nasya", "vamana", "raktamokshana",
+                         "ayurvedic detoxification"],
+    "virechana":        ["virechana", "therapeutic purgation",
+                         "panchakarma"],
+    "basti":            ["basti", "enema therapy",
+                         "ayurvedic enema", "panchakarma"],
+
+    # ── Rasayana category ──
+    "rasayana":         ["rasayana", "rejuvenation therapy",
+                         "adaptogen", "ayurvedic tonic"],
+    "medhya":           ["medhya", "medhya rasayana",
+                         "nootropic", "cognitive enhancer",
+                         "brain tonic"],
+
+    # ── Common biomedical terms that often co-occur ──
+    "nanoparticle":     ["nanoparticle", "nanoparticles",
+                         "nanomedicine", "nano formulation",
+                         "nanoencapsulation", "liposome"],
+    "inflammation":     ["inflammation", "inflammatory",
+                         "anti-inflammatory", "cytokine",
+                         "cox-2", "tnf-alpha", "interleukin"],
+    "diabetes":         ["diabetes", "diabetic",
+                         "hyperglycemia", "insulin resistance",
+                         "type 2 diabetes", "glycemic"],
+    "cancer":           ["cancer", "tumor", "tumour",
+                         "carcinoma", "oncology", "neoplasm",
+                         "apoptosis", "anticancer"],
+    "arthritis":        ["arthritis", "osteoarthritis",
+                         "rheumatoid arthritis", "joint inflammation",
+                         "synovitis"],
+    "anxiety":          ["anxiety", "anxiolytic", "stress",
+                         "cortisol", "adaptogen", "gaba"],
+    "depression":       ["depression", "antidepressant",
+                         "serotonin", "dopamine", "mood disorder"],
+    "alzheimer":        ["alzheimer", "dementia",
+                         "cognitive decline", "amyloid",
+                         "neurodegeneration", "acetylcholinesterase"],
+    "hypertension":     ["hypertension", "blood pressure",
+                         "antihypertensive", "vasodilation",
+                         "cardiovascular"],
+    "obesity":          ["obesity", "weight loss", "adipose",
+                         "lipid metabolism", "antiobesity",
+                         "bmi"],
+    "liver":            ["liver", "hepato", "hepatoprotective",
+                         "hepatotoxicity", "nafld",
+                         "liver fibrosis"],
+    "kidney":           ["kidney", "renal", "nephro",
+                         "nephroprotective", "glomerular"],
+    "antimicrobial":    ["antimicrobial", "antibacterial",
+                         "antifungal", "antiviral",
+                         "antibiotic", "pathogen"],
+    "antioxidant":      ["antioxidant", "free radical",
+                         "oxidative stress", "reactive oxygen",
+                         "superoxide dismutase"],
+    "wound":            ["wound", "wound healing",
+                         "skin repair", "collagen synthesis",
+                         "cicatrization"],
+    "sleep":            ["sleep", "insomnia", "sedative",
+                         "hypnotic", "sleep disorder",
+                         "polysomnography"],
+    "immunity":         ["immunity", "immune", "immunomodulatory",
+                         "immunostimulant", "nk cells",
+                         "macrophage"],
+    "gut":              ["gut", "microbiome", "gut microbiota",
+                         "probiotic", "prebiotic",
+                         "gastrointestinal", "dysbiosis"],
+}
+
+
+def get_search_terms(topic):
+    """
+    Returns a list of search terms for a given topic.
+
+    Priority order:
+    1. Direct match in synonym map
+    2. Partial match (e.g. user typed "curcumin" matches turmeric)
+    3. Multi-word topic — expand each word separately
+       e.g. "turmeric diabetes" → curcumin synonyms + diabetes synonyms
+    4. No match — use topic as-is (works for all general biomedical terms)
+    """
+    topic_lower = topic.lower().strip()
+
+    # 1. Direct match
+    if topic_lower in AYURVEDA_SYNONYMS:
+        terms = AYURVEDA_SYNONYMS[topic_lower]
+        print(f"  [synonym] Direct match: {terms}")
+        return terms
+
+    # 2. Partial match — catches scientific names typed directly
+    #    e.g. "withania" matches "ashwagandha"
+    for key, synonyms in AYURVEDA_SYNONYMS.items():
+        if topic_lower in key or key in topic_lower:
+            print(f"  [synonym] Partial match on key '{key}': {synonyms}")
+            return synonyms
+        if any(topic_lower in s or s in topic_lower for s in synonyms):
+            print(f"  [synonym] Partial match in synonyms of '{key}': {synonyms}")
+            return synonyms
+
+    # 3. Multi-word topic — expand each word individually
+    words = topic_lower.split()
+    if len(words) > 1:
+        expanded = []
+        for word in words:
+            if len(word) <= 3:      # skip short words like "of", "in"
+                continue
+            matched = False
+            if word in AYURVEDA_SYNONYMS:
+                expanded.extend(AYURVEDA_SYNONYMS[word])
+                matched = True
+            else:
+                for key, synonyms in AYURVEDA_SYNONYMS.items():
+                    if word in key or key in word:
+                        expanded.extend(synonyms)
+                        matched = True
+                        break
+                    if any(word in s or s in word for s in synonyms):
+                        expanded.extend(synonyms)
+                        matched = True
+                        break
+            if not matched:
+                expanded.append(word)   # keep the word as-is
+
+        if expanded:
+            deduped = list(dict.fromkeys(expanded))   # deduplicate, preserve order
+            print(f"  [synonym] Multi-word expansion: {deduped}")
+            return deduped
+
+    # 4. No match — direct search (works for all standard biomedical terms)
+    print(f"  [no synonym] Searching directly for: '{topic_lower}'")
+    return [topic_lower]
 
 
 # -------------------------
@@ -49,8 +276,6 @@ def get_conn():
 
 
 def detect_paper_columns(conn):
-    """Look at information_schema to find year/PMID columns, if they exist,
-    so we don't hardcode a column name that may not match your schema."""
     cursor = conn.cursor()
     cursor.execute(
         "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
@@ -64,27 +289,44 @@ def detect_paper_columns(conn):
     return year_col, pmid_col
 
 
-def fetch_papers(topic, limit=8):
+def fetch_papers(topic, limit=100):   # ← increased from 8 to 100
     conn = get_conn()
     try:
         year_col, pmid_col = detect_paper_columns(conn)
+
+        # Get all search terms (Ayurveda synonyms + biomedical expansion)
+        search_terms = get_search_terms(topic)
+        print(f"  Searching {len(search_terms)} term(s) across {limit} paper limit...")
+
+        # Build dynamic OR conditions — each term checks title AND abstract
+        conditions = " OR ".join(
+            ["(title ILIKE %s OR abstract ILIKE %s)"] * len(search_terms)
+        )
 
         query = sql.SQL(
             """
             SELECT id, title, abstract, {year_col}, {pmid_col}
             FROM papers
-            WHERE title ILIKE %s
-               OR abstract ILIKE %s
+            WHERE {conditions}
             LIMIT %s;
             """
         ).format(
-            year_col=sql.Identifier(year_col) if year_col else sql.SQL("NULL"),
-            pmid_col=sql.Identifier(pmid_col) if pmid_col else sql.SQL("NULL"),
+            year_col=sql.Identifier(year_col) if year_col
+                     else sql.SQL("NULL"),
+            pmid_col=sql.Identifier(pmid_col) if pmid_col
+                     else sql.SQL("NULL"),
+            conditions=sql.SQL(conditions),
         )
 
+        # Each term needs 2 params (title ILIKE + abstract ILIKE)
+        params = []
+        for term in search_terms:
+            params.extend([f"%{term}%", f"%{term}%"])
+        params.append(limit)
+
         cursor = conn.cursor()
-        cursor.execute(query, (f"%{topic}%", f"%{topic}%", limit))
-        rows = cursor.fetchall()  # (id, title, abstract, year, pmid)
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
         cursor.close()
 
         return rows
@@ -93,13 +335,8 @@ def fetch_papers(topic, limit=8):
 
 
 # -------------------------
-# Gap candidates table — the handoff surface for the ML team
+# Gap candidates table
 # -------------------------
-# NOTE: source_paper_ids is TEXT[] rather than UUID[]. Your `papers.id`
-# column may be an integer/serial rather than a UUID (your original script
-# treated it with str(row[0])), and inserting ints into a UUID[] column
-# raises a type error. Storing as text works regardless of the underlying
-# id type and is still perfectly queryable/joinable by the ML team.
 GAP_CANDIDATES_DDL = """
 CREATE TABLE IF NOT EXISTS gap_candidates (
     id UUID PRIMARY KEY,
@@ -111,10 +348,10 @@ CREATE TABLE IF NOT EXISTS gap_candidates (
     source_paper_ids TEXT[],
     study_count INT,
     last_published_year INT,
-    cluster_distance FLOAT,      -- gap-strength signal (higher = more novel/less covered)
-    novelty_score FLOAT,         -- NULL, filled in later by ML team
-    feasibility_score FLOAT,     -- NULL, filled in later by ML team
-    status TEXT DEFAULT 'new',   -- new | scored | seeded | discarded
+    cluster_distance FLOAT,
+    novelty_score FLOAT,
+    feasibility_score FLOAT,
+    status TEXT DEFAULT 'new',
     created_at TIMESTAMP DEFAULT now()
 );
 """
@@ -132,8 +369,6 @@ def ensure_gap_candidates_table():
 
 
 def save_gap_cards_to_db(output, paper_ids):
-    """Writes each gap_card from `output` into gap_candidates so the ML team
-    can read from Postgres directly instead of needing the JSON file."""
     if "error" in output:
         return 0
 
@@ -211,11 +446,11 @@ def call_ollama(prompt):
             "model": OLLAMA_MODEL,
             "prompt": prompt,
             "stream": False,
-            "format": "json",  # ask Ollama to constrain output to valid JSON
+            "format": "json",
             "options": {
-                "temperature": 0.2,   # less drift/creativity, more instruction-following
-                "num_predict": 900,   # enough for the JSON schema, without excess
-                "num_ctx": 4096,      # smaller KV cache — much lighter on CPU/RAM
+                "temperature": 0.2,
+                "num_predict": 900,
+                "num_ctx": 4096,
             },
         },
         timeout=OLLAMA_GENERATE_TIMEOUT,
@@ -225,8 +460,6 @@ def call_ollama(prompt):
 
 
 def get_embedding(text, model=OLLAMA_EMBED_MODEL):
-    """Get an embedding vector from Ollama for a piece of text.
-    Returns None on any failure (e.g. embedding model not pulled)."""
     if not text:
         return None
     try:
@@ -253,16 +486,15 @@ def cosine_similarity(a, b):
 
 
 def compute_cluster_distance(gap_text, paper_embeddings):
-    """Cosine distance between the gap's embedding and the centroid of its
-    supporting papers' (already-computed) embeddings. Lower = gap is
-    tightly grounded in that paper cluster; higher = more of a stretch /
-    potentially more novel. Returns None if embeddings aren't available."""
     gap_emb = get_embedding(gap_text)
     if gap_emb is None or not paper_embeddings:
         return None
 
     dim = len(paper_embeddings[0])
-    centroid = [sum(e[i] for e in paper_embeddings) / len(paper_embeddings) for i in range(dim)]
+    centroid = [
+        sum(e[i] for e in paper_embeddings) / len(paper_embeddings)
+        for i in range(dim)
+    ]
 
     sim = cosine_similarity(gap_emb, centroid)
     if sim is None:
@@ -271,8 +503,6 @@ def compute_cluster_distance(gap_text, paper_embeddings):
 
 
 def safe_parse_json(raw):
-    """Handles cases where the model wraps JSON in code fences or adds
-    stray text before/after it. Extracts the outermost {...} block."""
     raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.strip("`")
@@ -283,7 +513,7 @@ def safe_parse_json(raw):
     start = raw.find("{")
     end = raw.rfind("}")
     if start != -1 and end != -1 and end > start:
-        raw = raw[start : end + 1]
+        raw = raw[start: end + 1]
 
     try:
         return json.loads(raw)
@@ -292,8 +522,6 @@ def safe_parse_json(raw):
 
 
 def is_valid_result(result):
-    """Checks the model actually followed the schema we asked for, rather
-    than e.g. echoing the input papers back under different keys."""
     if not isinstance(result, dict):
         return False
     gaps = result.get("research_gaps")
@@ -307,25 +535,32 @@ def is_valid_result(result):
 # Core
 # -------------------------
 def generate_research_gaps(topic):
-    rows = fetch_papers(topic)  # each row: (id, title, abstract, year, pmid)
+    rows = fetch_papers(topic)
     print(f"Found {len(rows)} papers")
     for row in rows:
         print(f"  - {row[1]}")
 
     if not rows:
+        # Give a helpful message with suggestions
+        print(f"\nNo papers found for '{topic}'.")
+        print("Try a synonym or scientific name. Examples:")
+        print("  turmeric → also try: curcumin, curcuma longa")
+        print("  mulethi  → also try: glycyrrhiza glabra, licorice")
+        print("  ashwagandha → also try: withania somnifera")
         return {"error": f"No papers found for topic '{topic}'"}, []
 
     paper_ids = [row[0] for row in rows]
 
-    # Prefer PMID for nearest_papers when available, else fall back to
-    # the internal DB id so the field is never empty.
     nearest_papers = [
-        f"PMID:{pmid}" if pmid else f"ID:{pid}" for (pid, _, _, _, pmid) in rows
+        f"PMID:{pmid}" if pmid else f"ID:{pid}"
+        for (pid, _, _, _, pmid) in rows
     ]
     years = [year for (_, _, _, year, _) in rows if year]
     last_published_year = max(years) if years else None
 
-    paper_texts = [f"Title: {r[1] or ''}\nAbstract:\n{r[2] or ''}" for r in rows]
+    paper_texts = [
+        f"Title: {r[1] or ''}\nAbstract:\n{r[2] or ''}" for r in rows
+    ]
     paper_text = "\n\n".join(paper_texts)
 
     prompt = build_prompt(paper_text)
@@ -343,8 +578,6 @@ def generate_research_gaps(topic):
                   f"{OLLAMA_GENERATE_TIMEOUT}s, retrying...")
             continue
         except requests.RequestException as e:
-            # Connection refused etc. — Ollama likely isn't running at all,
-            # no point retrying the same failure 3 times.
             return {"error": f"Could not reach Ollama: {e}"}, paper_ids
 
         elapsed = time.time() - call_start
@@ -378,15 +611,14 @@ def generate_research_gaps(topic):
     opportunities = result.get("unexplored_opportunities", [])
     future = result.get("future_directions", [])
 
-    # Compute each paper's embedding ONCE and reuse it for every gap,
-    # instead of re-embedding all papers per gap (was ~15 x num_gaps calls,
-    # now just ~15 calls total).
     embed_start = time.time()
-    paper_embeddings = [e for e in (get_embedding(t) for t in paper_texts) if e]
+    paper_embeddings = [
+        e for e in (get_embedding(t) for t in paper_texts) if e
+    ]
     print(f"Embeddings computed in {time.time() - embed_start:.1f}s")
     if not paper_embeddings:
-        print("Note: no paper embeddings available — cluster_distance will be null "
-              "for all gaps. Run `ollama pull nomic-embed-text` to enable this.")
+        print("Note: no paper embeddings available — cluster_distance will be null. "
+              "Run `ollama pull nomic-embed-text` to enable this.")
 
     gap_cards = []
     for gap in research_gaps:
@@ -424,7 +656,6 @@ def generate_research_gaps(topic):
 # Output
 # -------------------------
 def _paragraph(items):
-    """Join a list of sentences into one flowing paragraph."""
     sentences = [s.strip() for s in items if s and s.strip()]
     return " ".join(sentences) if sentences else "No notable findings identified."
 
@@ -474,7 +705,6 @@ if __name__ == "__main__":
 
     print_report(result)
 
-    # Always save the JSON, success or error, and always say exactly where.
     save_json(result)
     print(f"Full structured output saved to: {OUTPUT_JSON_PATH}")
 
@@ -483,7 +713,5 @@ if __name__ == "__main__":
             n = save_gap_cards_to_db(result, paper_ids)
             print(f"Saved {n} gap card(s) to `gap_candidates` table for the ML team.")
         except Exception as e:
-            # A DB hiccup should never make it look like nothing was produced —
-            # the JSON file above is already saved and usable regardless.
             print(f"Note: could not write to `gap_candidates` table ({e}). "
                   f"The JSON file above still has everything the ML team needs.")
