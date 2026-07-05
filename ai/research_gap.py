@@ -16,8 +16,8 @@ DB_CONFIG = {
     "host": os.environ.get("CCRAS_DB_HOST", "100.101.210.91"),
     "port": int(os.environ.get("CCRAS_DB_PORT", 5432)),
     "database": os.environ.get("CCRAS_DB_NAME", "ccras_db"),
-    "user": os.environ.get("CCRAS_DB_USER", "postgres"),
-    "password": os.environ.get("CCRAS_DB_PASSWORD", "Pg1234"),
+    "user": os.environ.get("CCRAS_DB_USER", "readonly"),
+    "password": os.environ.get("CCRAS_DB_PASSWORD", "Read1234"),
 }
 
 OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
