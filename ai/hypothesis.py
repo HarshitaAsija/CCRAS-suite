@@ -10,20 +10,22 @@ import uuid
 import requests
 import psycopg2
 
-# ─────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────
-DB_CONFIG = {
-    "host": "100.101.210.91",
-    "port": 5432,
-    "database": "ccras_db",
-    "user": "readonly",
-    "password": "Read1234",
-}
+from config import (
+    DB_CONFIG,
+    OLLAMA_GENERATE_URL,
+    OLLAMA_EMBED_URL,
+    OLLAMA_MODEL,
+    OLLAMA_EMBED_MODEL,
+    OLLAMA_GENERATE_TIMEOUT,
+    OLLAMA_EMBED_TIMEOUT,
+)
 
-OLLAMA_URL    = "http://localhost:11434/api/generate"
-OLLAMA_MODEL  = "mistral"
-TIMEOUT       = int(os.environ.get("OLLAMA_TIMEOUT", 600))
+# ─────────────────────────────────────────────
+# 1. CONNECT TO DB
+# ─────────────────────────────────────────────
+def get_conn():
+    return psycopg2.connect(**DB_CONFIG)
+
 
 # Only generate hypotheses for gaps above these thresholds
 # Adjust if too few or too many gaps qualify

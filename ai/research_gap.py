@@ -12,21 +12,17 @@ from psycopg2 import sql
 # -------------------------
 # Config
 # -------------------------
-DB_CONFIG = {
-    "host": os.environ.get("CCRAS_DB_HOST", "100.101.210.91"),
-    "port": int(os.environ.get("CCRAS_DB_PORT", 5432)),
-    "database": os.environ.get("CCRAS_DB_NAME", "ccras_db"),
-    "user": os.environ.get("CCRAS_DB_USER", "readonly"),
-    "password": os.environ.get("CCRAS_DB_PASSWORD", "Read1234"),
-}
 
-OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
-OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
-OLLAMA_MODEL = "mistral"
-OLLAMA_EMBED_MODEL = "nomic-embed-text"
+from config import (
+    DB_CONFIG,
+    OLLAMA_GENERATE_URL,
+    OLLAMA_EMBED_URL,
+    OLLAMA_MODEL,
+    OLLAMA_EMBED_MODEL,
+    OLLAMA_GENERATE_TIMEOUT,
+    OLLAMA_EMBED_TIMEOUT,
+)
 
-OLLAMA_GENERATE_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", 600))
-OLLAMA_EMBED_TIMEOUT = int(os.environ.get("OLLAMA_EMBED_TIMEOUT", 120))
 
 OUTPUT_JSON_PATH = os.path.join(os.getcwd(), "research_gaps_output.json")
 

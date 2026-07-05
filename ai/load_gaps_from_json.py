@@ -4,17 +4,20 @@ import uuid
 import os
 import re
 import psycopg2
+import sys
+from config import (
+    DB_CONFIG,
+    OLLAMA_GENERATE_URL,
+    OLLAMA_EMBED_URL,
+    OLLAMA_MODEL,
+    OLLAMA_EMBED_MODEL,
+    OLLAMA_GENERATE_TIMEOUT,
+    OLLAMA_EMBED_TIMEOUT,
+)
 
 # ─────────────────────────────────────────────
-# DB CONFIG (hardcoded to avoid import issues)
+# 1. CONNECT TO DB
 # ─────────────────────────────────────────────
-DB_CONFIG = {
-    "host": "100.101.210.91",
-    "port": 5432,
-    "database": "ccras_db",
-    "user": "readonly",
-    "password": "Read1234",
-}
 
 def get_conn():
     return psycopg2.connect(**DB_CONFIG)
@@ -121,13 +124,29 @@ def insert_gaps(data):
 # ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
+
+
+
 if __name__ == "__main__":
-    # Adjust this path if your JSON file is elsewhere
-    json_path = "/Users/aanshikaverma/Desktop/CCRAS/CCRAS-suite/ai/research_gaps_output.json"
+    # Priority 1: path passed as command line argument
+    # Usage: python3 load_gaps_from_json.py /path/to/research_gaps_output.json
+    if len(sys.argv) > 1:
+        json_path = sys.argv[1]
+
+    # Priority 2: environment variable
+    # export GAPS_JSON_PATH=/your/path/research_gaps_output.json
+    elif os.environ.get("GAPS_JSON_PATH"):
+        json_path = os.environ["GAPS_JSON_PATH"]
+
+    # Priority 3: look in the same folder as this script
+    # Works for everyone if research_gap.py and load_gaps_from_json.py
+    # are in the same folder — which they are (both in ml/)
+    else:
+        json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "research_gaps_output.json")
 
     print(f"Reading from: {json_path}")
     data = load_json(json_path)
-
     if data:
         topic = data.get("topic", "?")
         count = len(data.get("gap_cards", []))
