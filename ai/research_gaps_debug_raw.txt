@@ -1,22 +1,22 @@
 {
-"response_0": {
-    "id": "0",
-    "role": {"name": "assistant"},
-    "content": "The first abstract discusses a study on the anti-inflammatory and in silico anti-viral assessment of phytoconstituents in the Ayurvedic formulation 'Arogyamrita Kwath'. The study reveals that the formulation significantly inhibited nitric oxide (NO) in comparison to dexamethasone and pro-inflammatory cytokines in RAW264.7 cells. Three fractions, n-hexane, EtOAc, and n-BuOH prepared from the AMK formulation were non-cytotoxic against RAW264.7 murine macrophage cells during MTT cytotoxicity assay and showed satisfactory results during cytokines assay. Ethyl acetate fraction contains active phytoconstituents in appreciable quantities. 16 phytoconstituents have been identified by UPLC-HRMS analysis in the formulation and four phytocompounds were quantified by UPLC-PDA. Molecular dynamics study helped in identifying two macromolecular targets (viral replicase and the membrane protein), which are relatively more important. The second abstract discusses a study on the protective role of Ashwagandharishta and flax seed oil against maximal electroshock induced seizures in albino rats. Both flax seed oil and Ashwagandharishta significantly decreased convulsion phase. The third abstract is about an in vitro antibacterial properties study of selected medicinal plants used by traditional healers for gastrointestinal disorders in the Heban-Arsi and Kofale districts of Southern Ethiopia."
-},
-"response_1": {
-    "id": "1",
-    "role": {"name": "assistant"},
-    "content": "The first study focuses on evaluating the anti-inflammatory activity of a polyherbal Ayurvedic formulation called 'Arogyamrita Kwath' and predicting its in silico anti-viral activity. The second study investigates whether Ashwagandharishta, an Ayurvedic classical formulation, and flax seed oil protect against maximal electroshock (MES) seizures in albino rats. The third study aims to validate the antibacterial properties of nine indigenous Ethiopian medicinal plants traditionally used to treat gastrointestinal illnesses."
-},
-"response_2": {
-    "id": "2",
-    "role": {"name": "assistant"},
-    "content": "The first study reveals that the AMK formulation significantly inhibited nitric oxide (NO) in comparison to dexamethasone and pro-inflammatory cytokines in RAW264.7 cells, indicating its anti-inflammatory activity. The second study shows that both flax seed oil and Ashwagandharishta significantly decreased convulsion phase in rats, suggesting their protective role against MES seizures. The third study validates the antibacterial properties of nine indigenous Ethiopian medicinal plants traditionally used to treat gastrointestinal illnesses."
-},
-"response_3": {
-    "id": "3",
-    "role": {"name": "assistant"},
-    "content": "The first study identifies 16 phytoconstituents by UPLC-HRMS analysis in the AMK formulation and four phytocompounds were quantified by UPLC-PDA. The second study shows that both flax seed oil and Ashwagandharishta exhibited an excellent anti-post-ictal depression effect and complete protection against mortality. The third study demonstrates antibacterial properties against all tested bacteria, though the degree of inhibition varied among the plants and target organisms."
+"response": {
+    "results": [
+        {
+            "title": "Phase I clinical trial of curcumin, a chemopreventive agent, in patients with high-risk or pre-malignant lesions",
+            "abstract": "This study evaluated the toxicology, pharmacokinetics, and biologically effective dose of curcumin in humans. The study found that curcumin is not toxic to humans up to 8,000 mg/day when taken by mouth for 3 months. The results suggest a biological effect of curcumin in the chemoprevention of cancer."
+        },
+        {
+            "title": "Curcumin Inhibits Formation of Amyloid β Oligomers and Fibrils, Binds Plaques, and Reduces Amyloid in Vivo",
+            "abstract": "This study found that curcumin directly binds small beta-amyloid species to block aggregation and fibril formation in vitro and in vivo. These data suggest that low dose curcumin effectively disaggregates Abeta as well as prevents fibril and oligomer formation, supporting the rationale for curcumin use in clinical trials preventing or treating Alzheimer's disease."
+        },
+        {
+            "title": "A Systematic Review With Targeted Meta-Analyses of Curcumin and Berberine In Vitro Cytotoxicity Models (2014-2026)",
+            "abstract": "This systematic review provides evidence that curcumin and berberine have cytotoxic effects in vitro, suggesting potential therapeutic benefits for various diseases."
+        },
+        {
+            "title": "MADHUMEHA (DIABETES MELLITUS): ITS PREVENTION AND PRINCIPLES OF MANAGEMENT AS PER AYURVEDA",
+            "abstract": "This abstract discusses the Ayurvedic principles of prevention and management of diabetes mellitus, also known as Madhumeha. It mentions various single drugs, formulae with multiple ingredients from plants, purified mineral and metals for different disease conditions, as well as body purifying procedures known as Panchakarma."
+        }
+    ]
 }
 }

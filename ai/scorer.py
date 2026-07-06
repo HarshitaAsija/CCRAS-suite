@@ -7,7 +7,13 @@ from config import DB_CONFIG
 # 1. CONNECT TO DB
 # ─────────────────────────────────────────────
 def get_conn():
-    return psycopg2.connect(**DB_CONFIG)
+    conn = psycopg2.connect(**DB_CONFIG)
+
+    cur = conn.cursor()
+    cur.execute("SELECT current_user, current_database();")
+    print("Connected as:", cur.fetchone())
+
+    return conn
 
 
 # ─────────────────────────────────────────────
@@ -21,56 +27,57 @@ def get_conn():
 #   - most recent published_at of its source papers
 # ─────────────────────────────────────────────
 def load_gaps_with_features(conn):
-    cur = conn.cursor()
+    try:
+        cur = conn.cursor()
 
-    # Step 1: get all gaps with their own fields
-    cur.execute("""
-        SELECT
-            id,
-            title,
-            description,
-            study_count,
-            coverage_score,
-            source_paper_ids
-        FROM gap_candidates
-        ORDER BY created_at;
-    """)
-    rows = cur.fetchall()
-    print(f"Loaded {len(rows)} gap candidates from DB.")
+        cur.execute("""
+            SELECT
+                id,
+                title,
+                description,
+                study_count,
+                coverage_score,
+                source_paper_ids
+            FROM gap_candidates
+            ORDER BY created_at;
+        """)
+        rows = cur.fetchall()
+        print(f"Loaded {len(rows)} gap candidates from DB.")
 
-    gaps = []
-    for row in rows:
-        gap_id       = row[0]
-        title        = row[1] or ""
-        description  = row[2] or ""
-        study_count  = row[3] or 0
-        coverage_score = row[4] or 0.0
-        paper_ids    = row[5] or []
+        gaps = []
+        for row in rows:
+            gap_id         = row[0]
+            title          = row[1] or ""
+            description    = row[2] or ""
+            study_count    = row[3] or 0
+            coverage_score = row[4] or 0.0
+            paper_ids      = row[5] or []
 
-        # Step 2: get paper-level signals
-        # Try source_paper_ids JOIN first, fall back to text search
-        paper_stats = get_paper_stats_by_ids(cur, paper_ids)
+            paper_stats = get_paper_stats_by_ids(cur, paper_ids)
 
-        if paper_stats["matched_paper_count"] == 0:
-            # Fallback: search papers whose title/abstract
-            # contains words from the gap title
-            keywords = extract_keywords(title)
-            paper_stats = get_paper_stats_by_text(cur, keywords)
+            if paper_stats["matched_paper_count"] == 0:
+                keywords = extract_keywords(title)
+                paper_stats = get_paper_stats_by_text(cur, keywords)
 
-        gaps.append({
-            "id":                  gap_id,
-            "title":               title,
-            "description":         description,
-            "study_count":         study_count,
-            "coverage_score":      float(coverage_score),
-            "matched_paper_count": paper_stats["matched_paper_count"],
-            "avg_citation_count":  paper_stats["avg_citation_count"],
-            "latest_published_at": paper_stats["latest_published_at"],
-            "avg_word_count":      paper_stats["avg_word_count"],
-        })
+            gaps.append({
+                "id":                  gap_id,
+                "title":               title,
+                "description":         description,
+                "study_count":         study_count,
+                "coverage_score":      float(coverage_score),
+                "matched_paper_count": paper_stats["matched_paper_count"],
+                "avg_citation_count":  paper_stats["avg_citation_count"],
+                "latest_published_at": paper_stats["latest_published_at"],
+                "avg_word_count":      paper_stats["avg_word_count"],
+            })
 
-    cur.close()
-    return gaps
+        cur.close()
+        return gaps
+
+    except Exception as e:
+        conn.rollback()          # ← clears broken transaction state
+        print(f"Error loading gaps: {e}")
+        return []
 
 
 def extract_keywords(title):
@@ -366,16 +373,20 @@ def percentile_normalize(scores, scale=10.0):
 # 6. WRITE SCORES BACK TO DB
 # ─────────────────────────────────────────────
 def update_scores_in_db(conn, gap_id, novelty, feasibility):
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE gap_candidates
-        SET novelty_score     = %s,
-            feasibility_score = %s,
-            status            = 'scored'
-        WHERE id = %s
-    """, (novelty, feasibility, gap_id))
-    conn.commit()
-    cur.close()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE gap_candidates
+            SET novelty_score     = %s,
+                feasibility_score = %s,
+                status            = 'scored'
+            WHERE id = %s
+        """, (novelty, feasibility, gap_id))
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        conn.rollback()   # ← clears the broken transaction so next update can run
+        print(f"  Could not update gap {gap_id}: {e}")
 
 
 # ─────────────────────────────────────────────
@@ -385,9 +396,14 @@ def run_scoring():
     print("=== RISHI-AI Scoring Pipeline (T11 + T12) ===\n")
 
     conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT current_user, current_database();")
+    print("Connected as:", cur.fetchone())
+    cur.close()
 
     # Step A: load data
     gaps = load_gaps_with_features(conn)
+    conn.close()   # close read connection after loading
 
     if not gaps:
         print("No gaps found in gap_candidates table. Exiting.")
@@ -412,18 +428,34 @@ def run_scoring():
     print(f"{'Title':<50} {'Novelty':>8} {'Feasibility':>12}")
     print("-" * 72)
 
+    updated = 0
+    failed  = 0
+
     for i, gap in enumerate(gaps):
         n_score = novelty_normalized[i]
         f_score = feasibility_normalized[i]
 
-        update_scores_in_db(conn, gap["id"], n_score, f_score)
-
         title_short = (gap["title"] or "")[:48]
-        print(f"{title_short:<50} {n_score:>8.1f} {f_score:>12.1f}")
 
-    conn.close()
-    print(f"\nDone. Scored {len(gaps)} gap candidates.")
-    print("novelty_score and feasibility_score updated in gap_candidates table.")
+        # Fresh connection per update — one failure won't block the rest
+        try:
+            write_conn = get_conn()
+            update_scores_in_db(write_conn, gap["id"], n_score, f_score)
+            write_conn.close()
+            updated += 1
+            print(f"{title_short:<50} {n_score:>8.1f} {f_score:>12.1f}")
+
+        except Exception as e:
+            failed += 1
+            print(f"{title_short:<50}  FAILED: {e}")
+            continue
+
+    print(f"\nDone. Updated: {updated}, Failed: {failed}")
+
+    if failed > 0:
+        print("\nFailed updates are likely a DB permissions issue.")
+        print("Ask your DB maintainer to run:")
+        print("  GRANT UPDATE ON gap_candidates TO readonly;")
 
 
 if __name__ == "__main__":

@@ -40,30 +40,30 @@ def get_conn():
     return psycopg2.connect(**DB_CONFIG)
 
 
-def ensure_hypothesis_table(conn):
-    """
-    Creates the hypothesis_seeds table if it doesn't exist.
-    Each row is one PICO hypothesis linked to a gap_candidate.
-    """
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS hypothesis_seeds (
-            id               UUID PRIMARY KEY,
-            gap_id           UUID REFERENCES gap_candidates(id),
-            gap_title        TEXT,
-            population       TEXT,
-            intervention     TEXT,
-            comparator       TEXT,
-            outcome          TEXT,
-            hypothesis_text  TEXT,
-            confidence       TEXT,
-            status           TEXT DEFAULT 'seeded',
-            created_at       TIMESTAMP DEFAULT now()
-        );
-    """)
-    conn.commit()
-    cur.close()
-    print("hypothesis_seeds table ready.")
+# def ensure_hypothesis_table(conn):
+#     """
+#     Creates the hypothesis_seeds table if it doesn't exist.
+#     Each row is one PICO hypothesis linked to a gap_candidate.
+#     """
+#     cur = conn.cursor()
+#     cur.execute("""
+#         CREATE TABLE IF NOT EXISTS hypothesis_seeds (
+#             id               UUID PRIMARY KEY,
+#             gap_id           UUID REFERENCES gap_candidates(id),
+#             gap_title        TEXT,
+#             population       TEXT,
+#             intervention     TEXT,
+#             comparator       TEXT,
+#             outcome          TEXT,
+#             hypothesis_text  TEXT,
+#             confidence       TEXT,
+#             status           TEXT DEFAULT 'seeded',
+#             created_at       TIMESTAMP DEFAULT now()
+#         );
+#     """)
+#     conn.commit()
+#     cur.close()
+#     print("hypothesis_seeds table ready.")
 
 
 def fetch_qualified_gaps(conn):
@@ -247,7 +247,7 @@ Use EXACTLY this structure:
 # ─────────────────────────────────────────────
 def call_ollama(prompt):
     response = requests.post(
-        OLLAMA_URL,
+        OLLAMA_GENERATE_URL,
         json={
             "model": OLLAMA_MODEL,
             "prompt": prompt,
@@ -259,7 +259,7 @@ def call_ollama(prompt):
                 "num_ctx": 4096,
             },
         },
-        timeout=TIMEOUT,
+        timeout=OLLAMA_GENERATE_TIMEOUT,
     )
     response.raise_for_status()
     return response.json()
@@ -325,7 +325,7 @@ def run_hypothesis_seeding():
           f"feasibility >= {FEASIBILITY_MIN}\n")
 
     conn = get_conn()
-    ensure_hypothesis_table(conn)
+    # ensure_hypothesis_table(conn)
 
     # Step 1: fetch qualified gaps
     gaps = fetch_qualified_gaps(conn)

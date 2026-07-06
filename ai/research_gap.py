@@ -285,7 +285,7 @@ def detect_paper_columns(conn):
     return year_col, pmid_col
 
 
-def fetch_papers(topic, limit=100):   # ← increased from 8 to 100
+def fetch_papers(topic, limit=8):   # ← increased from 8 to 100
     conn = get_conn()
     try:
         year_col, pmid_col = detect_paper_columns(conn)
@@ -695,7 +695,6 @@ def save_json(output, path=OUTPUT_JSON_PATH):
 
 
 if __name__ == "__main__":
-    ensure_gap_candidates_table()
     topic = input("Enter topic: ")
     result, paper_ids = generate_research_gaps(topic)
 
