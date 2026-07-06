@@ -1,120 +1,223 @@
-/* eslint-disable */
-import React from "react";
-import { Stat } from "../shared/Stat";
-import { Card } from "../shared/Card";
-import { Badge } from "../shared/Badge";
-import { FileText, TrendingUp, Sparkles, Network } from "lucide-react";
+"use client";
 
-export function ResearchGaps() {
-  const gaps = [
-    { id: 1, title: "SGLT2 Inhibitors in Pediatric CKD", importance: 97, papers: 0, why: "All major SGLT2i trials excluded patients under 18. Pediatric CKD is rising globally (+14%/decade). Mechanism is age-independent.", impact: "High", area: "Nephrology", suggestion: "Phase II safety/PK trial, age 8–17, eGFR 15–45, n=180" },
-    { id: 2, title: "GLP-1 Agonists + Neurodegeneration in T2DM", importance: 91, papers: 12, why: "GLP-1 receptors expressed in substantia nigra and hippocampus. Semaglutide reduces α-synuclein in rodents. No human RCT in T2DM + PD population.", impact: "Very High", area: "Neurology", suggestion: "Liraglutide RCT in early PD + T2DM comorbidity, n=520, 3-year MDS-UPDRS endpoint" },
-    { id: 3, title: "CAR-T Cell Persistence Predictors in Solid Tumors", importance: 88, papers: 4, why: "CAR-T succeeds in heme malignancies but fails in solid tumors. Tumor microenvironment immunosuppression is likely. CAR-T persistence <1% at 3 months in NSCLC trials.", impact: "High", area: "Oncology", suggestion: "Multiomics: scRNA-seq + TCR sequencing in pre/post CAR-T solid tumor biopsies, n=60" },
-    { id: 4, title: "Racial Disparities in FH Diagnosis Rate", importance: 85, papers: 8, why: "Dutch Lipid Clinic Network criteria biased toward European ancestry. African-American and South Asian FH likely misdiagnosed by 40–60%. No population-based genomic screening cohort.", impact: "High", area: "Cardiology", suggestion: "Genomic + LDL-C screening in NHANES-linked cohort, targeted FH panel in non-European ancestry" },
-    { id: 5, title: "Long-COVID Cognitive Impairment Mechanisms", importance: 83, papers: 27, why: "Cognitive impairment in 15–30% of Long-COVID patients at 12 months. Microglial activation, spike protein persistence, and autoantibody hypotheses unproven in human studies.", impact: "Very High", area: "Neurology", suggestion: "CSF proteomics + brain PET imaging (microglial activation) in Long-COVID cognitive impairment, n=200" },
-  ];
+import { useEffect, useState } from "react";
+import { fetchGapCards, fetchDomains, GapCard } from "@/lib/api";
+
+function ScorePill({ label, value }: { label: string; value: number | null }) {
+  if (value === null) return null;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "3px 10px", borderRadius: 20,
+      background: "#AFC9E3", fontSize: 12,
+      fontWeight: 500, color: "#1B2A4A",
+    }}>
+      {label} {value.toFixed(1)}
+    </span>
+  );
+}
+
+function GapCardItem({ gap }: { gap: GapCard }) {
+  const [hovered, setHovered] = useState(false);
+  const [btnHovered, setBtnHovered] = useState(false);
 
   return (
-    <div className="flex-1 overflow-auto p-8 flex flex-col gap-8 bg-background">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground tracking-tight mb-1">Research Gaps</h1>
-        <p className="text-sm text-text-muted">Unexplored biomedical domains identified by analyzing 284,000+ papers.</p>
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: "#F4EEE0",
+        border: "1px solid #E5DCC8",
+        borderRadius: 16, padding: 24,
+        display: "flex", flexDirection: "column", gap: 12,
+        boxShadow: hovered ? "0 2px 16px rgba(27,42,74,0.09)" : "none",
+        transition: "box-shadow 0.15s ease-out",
+      }}
+    >
+      {/* Domain tags */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: "0.09em",
+          color: "#3D6FA8", textTransform: "uppercase",
+        }}>
+          {gap.domain}
+        </span>
+        {gap.subdomain && (
+          <>
+            <span style={{ fontSize: 10, color: "#3D6FA8" }}>·</span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.09em",
+              color: "#3D6FA8", textTransform: "uppercase",
+            }}>
+              {gap.subdomain}
+            </span>
+          </>
+        )}
       </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Stat label="Total Gaps Identified" value="1,204" color="warning" delta={5} />
-        <Stat label="High Impact Gaps" value="287" color="danger" />
-        <Stat label="Zero-paper Gaps" value="143" color="accent" sub="No existing literature" />
+
+      {/* Title */}
+      <h3 style={{
+        margin: 0, fontSize: 16, fontWeight: 600,
+        color: "#1B2A4A", lineHeight: 1.45,
+        fontFamily: "'Georgia', serif",
+      }}>
+        {gap.title}
+      </h3>
+
+      {/* Description */}
+      <p style={{
+        margin: 0, fontSize: 13, color: "#5F5E5A", lineHeight: 1.65,
+        display: "-webkit-box",
+        WebkitLineClamp: 3,
+        WebkitBoxOrient: "vertical",
+        overflow: "hidden",
+      }}>
+        {gap.description}
+      </p>
+
+      {/* Scores + study count */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <ScorePill label="Novelty"      value={gap.novelty_score} />
+        <ScorePill label="Feasibility"  value={gap.feasibility_score} />
+        {gap.study_count > 0 && (
+          <span style={{ fontSize: 12, color: "#888780" }}>
+            {gap.study_count} {gap.study_count === 1 ? "study" : "studies"}
+          </span>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-2 flex flex-col gap-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-foreground">Top Priority Research Gaps</h3>
-            <span className="text-xs text-text-muted font-medium">Ranked by AI importance score</span>
-          </div>
-          
-          {gaps.map((gap, i) => (
-            <Card key={i} className="flex flex-col gap-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    <Badge color="warning">Gap #{gap.id}</Badge>
-                    <Badge color={gap.papers === 0 ? "danger" : gap.papers < 10 ? "warning" : "gray"}>
-                      {gap.papers === 0 ? "Zero evidence" : `${gap.papers} papers`}
-                    </Badge>
-                    <Badge color="gray">{gap.area}</Badge>
-                  </div>
-                  <h4 className="text-lg font-bold text-foreground">{gap.title}</h4>
-                </div>
-                <div className="flex flex-col items-center justify-center w-24 flex-shrink-0 border-l border-border-light pl-4 ml-4">
-                  <div className="text-3xl font-bold text-warning leading-none">{gap.importance}</div>
-                  <div className="text-[9px] font-bold text-text-dim uppercase tracking-widest mt-2">Importance</div>
-                </div>
-              </div>
-              
-              <p className="text-sm text-text-muted leading-relaxed">
-                {gap.why}
-              </p>
-              
-              <div className="bg-accent-light border border-accent/20 rounded-lg p-4 flex gap-3">
-                <Sparkles size={16} className="text-accent flex-shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-xs font-bold text-accent uppercase tracking-wider block mb-1">Suggested Study Design</span>
-                  <span className="text-sm text-foreground font-medium">{gap.suggestion}</span>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+      {/* Explore evidence button */}
+      <button
+        onMouseEnter={() => setBtnHovered(true)}
+        onMouseLeave={() => setBtnHovered(false)}
+        style={{
+          marginTop: 8, width: "100%", padding: "10px 0",
+          background: btnHovered ? "#1F3C66" : "transparent",
+          border: `1px solid ${btnHovered ? "#1F3C66" : "#3D6FA8"}`,
+          borderRadius: 10,
+          color: btnHovered ? "#FAF6EE" : "#3D6FA8",
+          fontSize: 13, fontWeight: 500, cursor: "pointer",
+          transition: "all 0.15s ease-out",
+        }}
+      >
+        Explore evidence →
+      </button>
+    </div>
+  );
+}
 
-        <div className="xl:col-span-1 flex flex-col gap-8">
-          <Card className="flex flex-col gap-4">
-            <div className="flex items-center gap-2 text-foreground font-bold text-sm">
-              <Network size={16} /> Gap Clusters by Specialty
-            </div>
-            
-            <div className="flex flex-col gap-3">
-              {[
-                { label: "Neurology", count: 298, color: "bg-accent", border: "border-accent" },
-                { label: "Oncology", count: 234, color: "bg-danger", border: "border-danger" },
-                { label: "Cardiology", count: 187, color: "bg-warning", border: "border-warning" },
-                { label: "Nephrology", count: 143, color: "bg-primary", border: "border-primary" },
-                { label: "Endocrinology", count: 89, color: "bg-success", border: "border-success" },
-              ].map((c, i) => (
-                <div key={i}>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <span className="text-sm font-semibold text-foreground">{c.label}</span>
-                    <span className="text-xs text-text-muted font-medium">{c.count} gaps</span>
-                  </div>
-                  <div className="w-full h-2 bg-surface-hover rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${c.color}`} style={{ width: `${(c.count / 300) * 100}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+function Skeleton() {
+  return (
+    <>
+      {[1,2,3,4,5,6].map(i => (
+        <div key={i} style={{
+          background: "#F4EEE0", border: "1px solid #E5DCC8",
+          borderRadius: 16, height: 240,
+          animation: "pulse 1.5s ease-in-out infinite",
+          animationDelay: `${i * 0.1}s`,
+        }} />
+      ))}
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
+    </>
+  );
+}
 
-          <Card className="flex flex-col gap-4">
-            <div className="flex items-center gap-2 text-foreground font-bold text-sm">
-              <TrendingUp size={16} /> Emerging Topics
-            </div>
-            
-            <div className="flex flex-col gap-2">
-              {[
-                { label: "GLP-1 + Neurodegeneration", trend: "+847% citations", color: "text-success", bg: "bg-success-light" },
-                { label: "Senolytic Therapy + Aging", trend: "+523%", color: "text-accent", bg: "bg-accent-light" },
-                { label: "Long-COVID Mechanisms", trend: "+394%", color: "text-warning", bg: "bg-warning-light" },
-                { label: "CRISPR Base Editing Safety", trend: "+312%", color: "text-primary", bg: "bg-primary-light" },
-              ].map((t, i) => (
-                <div key={i} className="flex justify-between items-center p-3 rounded-lg border border-border-light bg-surface hover:bg-surface-hover transition-colors">
-                  <span className="text-sm font-medium text-foreground">{t.label}</span>
-                  <span className={`text-xs font-bold px-2 py-1 rounded-md ${t.color} ${t.bg}`}>{t.trend}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
+function EmptyState() {
+  return (
+    <div style={{ gridColumn:"1/-1", textAlign:"center", padding:"80px 0", color:"#888780" }}>
+      <p style={{ fontSize:16, fontWeight:600, color:"#1B2A4A" }}>No gaps found</p>
+      <p style={{ fontSize:13, marginTop:8 }}>
+        Try a different domain or run <code>research_gap.py</code> then <code>scorer.py</code>
+      </p>
+    </div>
+  );
+}
+
+export default function ResearchGaps() {
+  const [gaps,     setGaps]     = useState<GapCard[]>([]);
+  const [filtered, setFiltered] = useState<GapCard[]>([]);
+  const [domains,  setDomains]  = useState<string[]>(["All domains"]);
+  const [domain,   setDomain]   = useState("All domains");
+  const [sortBy,   setSortBy]   = useState<"novelty"|"feasibility">("novelty");
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string|null>(null);
+
+  useEffect(() => {
+    Promise.all([fetchGapCards(), fetchDomains()])
+      .then(([gapData, domainData]) => {
+        setGaps(gapData);
+        setFiltered(sort(gapData, "novelty"));
+        setDomains(["All domains", ...domainData]);
+      })
+      .catch(() => setError(
+        "Cannot connect to API. Make sure api_server.py is running:\n" +
+        "cd ai && uvicorn api_server:app --reload --port 8000"
+      ))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const result = domain === "All domains"
+      ? [...gaps]
+      : gaps.filter(g => g.domain === domain);
+    setFiltered(sort(result, sortBy));
+  }, [domain, sortBy, gaps]);
+
+  function sort(list: GapCard[], by: "novelty"|"feasibility") {
+    return [...list].sort((a, b) => {
+      const av = by === "novelty" ? (a.novelty_score ?? 0) : (a.feasibility_score ?? 0);
+      const bv = by === "novelty" ? (b.novelty_score ?? 0) : (b.feasibility_score ?? 0);
+      return bv - av;
+    });
+  }
+
+  const sel: React.CSSProperties = {
+    padding: "8px 16px", borderRadius: 8,
+    border: "1px solid #E5DCC8",
+    background: "#FAF6EE", color: "#1B2A4A",
+    fontSize: 13, cursor: "pointer",
+  };
+
+  return (
+    <div style={{ padding:"32px 40px", background:"#FAF6EE", minHeight:"100vh" }}>
+      <h1 style={{ margin:"0 0 6px", fontSize:28, fontWeight:600, color:"#1B2A4A", fontFamily:"'Georgia',serif" }}>
+        Gap Cards
+      </h1>
+      <p style={{ margin:"0 0 28px", fontSize:14, color:"#888780" }}>
+        Unstudied and under-studied combinations, ranked by novelty and feasibility.
+      </p>
+
+      <div style={{ display:"flex", gap:12, marginBottom:32 }}>
+        <select value={domain} onChange={e => setDomain(e.target.value)} style={sel}>
+          {domains.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} style={sel}>
+          <option value="novelty">Sort by Novelty</option>
+          <option value="feasibility">Sort by Feasibility</option>
+        </select>
+      </div>
+
+      {error && (
+        <div style={{
+          padding:"14px 18px", borderRadius:10, marginBottom:24,
+          background:"#FCEBEB", border:"1px solid #F7C1C1",
+          color:"#791F1F", fontSize:13, whiteSpace:"pre-line",
+        }}>
+          ⚠️ {error}
         </div>
+      )}
+
+      <div style={{
+        display:"grid",
+        gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))",
+        gap:24,
+      }}>
+        {loading
+          ? <Skeleton />
+          : filtered.length === 0
+            ? <EmptyState />
+            : filtered.map(gap => <GapCardItem key={gap.id} gap={gap} />)
+        }
       </div>
     </div>
   );
