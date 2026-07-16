@@ -546,66 +546,60 @@ def fetch_papers(topic, limit=BATCH_SIZE):
 # -------------------------
 def save_gap_cards_to_db(output, paper_ids):
     if "error" in output:
-        return 0
- 
-    conn    = get_conn()
-    written = 0
+        return {}
+
+    conn = get_conn()
+    id_map = {}
     try:
         cur = conn.cursor()
         for card in output["gap_cards"]:
- 
             papers_list = card.get("papers", [])
             support_ids = [p["paper_id"] for p in papers_list if p.get("paper_id")]
- 
+            db_id = str(uuid.uuid4())
+
             try:
                 cur.execute("""
                     INSERT INTO gap_candidates (
                         id, gap_id, topic, title, description,
                         related_entities, source_paper_ids,
+                        supporting_papers_detail,
                         study_count, last_published_year,
-                        cluster_distance, status
+                        cluster_distance, novelty_score,
+                        feasibility_score, status
                     ) VALUES (
                         %s, %s, %s, %s, %s,
                         %s::jsonb, %s::uuid[],
-                        %s, %s, %s, 'new'
+                        %s::jsonb,
+                        %s, %s, %s, %s, %s, 'scored'
                     )
                     ON CONFLICT DO NOTHING
                 """, (
-                    str(uuid.uuid4()),
+                    db_id,
                     card["gap_id"],
                     output["topic"],
                     card["gap_title"],
                     card["gap_description"],
-                    # related_entities is now a categorized dict (e.g.
-                    # {"herbs": [...], "chemicals": [...]}) rather than a
-                    # flat list -- json.dumps handles either shape fine,
-                    # and the DB column is jsonb so no schema change needed.
                     json.dumps(card.get("related_entities", {})),
                     support_ids,
+                    json.dumps(papers_list),   # ← full detail preserved
                     card.get("supporting_paper_count", len(support_ids)),
                     card.get("most_recent_year"),
-                    # NOTE: novelty_score/feasibility_score/overall_score
-                    # aren't stored yet -- gap_candidates has no columns for
-                    # them. cluster_distance is no longer computed (we
-                    # stopped calling compute_cluster_distance per gap), so
-                    # this column gets NULL until/unless you add real score
-                    # columns via ALTER TABLE and this write is updated to
-                    # match.
                     None,
+                    card.get("novelty_score"),
+                    card.get("feasibility_score"),
                 ))
-                written += 1
+                id_map[card["gap_id"]] = db_id
             except Exception as e:
                 conn.rollback()
                 print(f"  Skipped '{card.get('gap_title','')[:40]}': {e}")
                 continue
- 
+
         conn.commit()
         cur.close()
     finally:
         conn.close()
-    return written
- 
- 
+    return id_map
+     
 # -------------------------
 # Prompt + Ollama
 # -------------------------
@@ -1336,10 +1330,15 @@ def _pipeline_step(pipeline, name, started_at, **details):
 # ─────────────────────────────────────────────
 # CORE — BATCHED PIPELINE
 # ─────────────────────────────────────────────
-def generate_research_gaps(topic):
+def generate_research_gaps(topic, progress_callback=None):
+    def report(msg):
+        if progress_callback:
+            progress_callback(msg)
+
     pipeline = []
- 
+
     # --- Step 1: fetch matching papers (with synonym expansion) + batch them ---
+    report("Fetching papers from database...")
     t0 = time.time()
     all_rows, batches = fetch_papers_batched(topic)
     _pipeline_step(
@@ -1350,52 +1349,39 @@ def generate_research_gaps(topic):
         batch_size=BATCH_SIZE,
         total_batches=len(batches),
     )
- 
+
     if not all_rows:
         print(f"\nNo papers found for '{topic}'.")
         return {
             "error": f"No papers found for topic '{topic}'",
             "pipeline": pipeline,
         }, []
- 
+
     paper_ids           = [row[0] for row in all_rows]
     years               = [
         y for y in (_extract_year(row[3]) for row in all_rows) if y
     ]
     last_published_year = max(years) if years else None
- 
-    # NEW: cheap, non-LLM summary of every fetched paper (title, year, link, snippet)
+
     papers_summary = build_papers_summary(all_rows)
-    # NEW: flat, minimal id -> link list for every paper fetched this run.
     paper_links = build_paper_id_links(all_rows)
- 
-    # Compute embeddings once for all papers.
-    # CHANGED: previously embeddings were collected into a flat list with a
-    # list-comprehension filter, which silently drops the row alignment if
-    # any single embedding call fails (e.g. timeout on one paper) -- the
-    # embedding just vanishes from the list while `all_rows` still has the
-    # row, and there was no way to know which paper a given embedding
-    # belonged to. That was harmless before (only used to build one
-    # centroid), but research-front clustering below needs to know exactly
-    # which paper each vector came from, so we now keep them paired.
-    # NEW: confirm (and auto-pull if needed) the embedding model BEFORE
-    # attempting any embed calls, so the "model not found" 404 from before
-    # gets fixed at the source instead of failing silently 80+ times.
+
     ensure_ollama_model(OLLAMA_EMBED_MODEL)
- 
+
+    report(f"Computing embeddings for {len(all_rows)} papers...")
     print("\nComputing paper embeddings...")
     t0 = time.time()
     paper_texts = [
         f"Title: {r[1] or ''}\nAbstract:\n{r[2] or ''}"
         for r in all_rows
-    ]  # row shape: (id, title, abstract, year_raw, pmid, doi) -- only title/abstract used here
+    ]
     paper_embedding_pairs = []
     for row, text in zip(all_rows, paper_texts):
         emb = get_embedding(text)
         if emb:
             paper_embedding_pairs.append((row, emb))
- 
-    paper_embeddings = [e for _, e in paper_embedding_pairs]  # kept for cluster_distance centroid, unchanged behavior
+
+    paper_embeddings = [e for _, e in paper_embedding_pairs]
     _pipeline_step(
         pipeline, "embed_papers", t0,
         status="ok" if paper_embeddings else "no_embeddings",
@@ -1403,26 +1389,13 @@ def generate_research_gaps(topic):
         attempted=len(all_rows),
     )
     print(f"Embeddings done in {time.time() - t0:.1f}s")
- 
-    # NEW: research-front mapping (k-means clustering over paper embeddings)
-    # + trend detection (per-front and overall). No LLM calls -- cheap and
-    # fast, runs on data we already have.
-    #
-    # CHANGED: overall_trend now comes from fetch_all_years_for_topic(),
-    # NOT from `years` (which only reflects the recency-capped 80 papers).
-    # Since fetch_papers_batched sorts newest-first and caps at
-    # TOTAL_PAPERS, using that capped set here would make older years look
-    # artificially thin/empty on the chart -- not a real decline, just an
-    # artifact of the cap. Research-front trends (per cluster) are still
-    # necessarily scoped to the fetched+embedded subset, since we can't
-    # cluster papers we never embedded -- that limitation remains, but the
-    # overall trend line now reflects the true full matching population.
+
+    report("Clustering papers into research fronts...")
     t0 = time.time()
     all_matching_years = fetch_all_years_for_topic(topic)
     research_fronts = build_research_fronts(paper_embedding_pairs, topic=topic)
-    # NEW: turn raw keyword labels ("turmeric, curcumin, ...") into a
-    # readable title + summary via one LLM call per front. Cheap relative
-    # to the per-batch gap-generation calls (at most ~6 extra calls here).
+
+    report(f"Labeling {len(research_fronts)} research front(s)...")
     add_front_display_info(research_fronts)
     overall_trend = detect_trend(all_matching_years)
     _pipeline_step(
@@ -1432,22 +1405,24 @@ def generate_research_gaps(topic):
         total_matching_papers=len(all_matching_years),
         papers_used_for_fronts=len(paper_embedding_pairs),
     )
- 
+
     all_gap_cards     = []
     all_limitations   = []
     all_opportunities = []
     all_future        = []
     batches_succeeded = 0
- 
+
     # --- Step: MAP — one LLM call per batch ---
     t_map_start = time.time()
     for batch_num, batch_rows in enumerate(batches, start=1):
+        # Report ONCE per batch, before retries — retries inside this
+        # batch don't advance the counter, so the frontend correctly
+        # shows "batch 3/10" the whole time batch 3 is retrying instead
+        # of jumping to fake batch numbers 11+.
+        report(f"Analysing batch {batch_num}/{len(batches)} with Ollama (~1 min per batch)...")
         print(f"\n--- Batch {batch_num}/{len(batches)} "
               f"({len(batch_rows)} papers) ---")
- 
-        # Build per-batch paper reference list — this is what
-        # supports gaps from THIS batch specifically
-        # NEW: now includes a `link` and `summary` per paper too
+
         batch_paper_refs = []
         for row in batch_rows:
             pid, title, abstract, year_raw, pmid, doi = row
@@ -1460,7 +1435,7 @@ def generate_research_gaps(topic):
                 "link":    build_paper_link(pid, pmid, doi),
                 "summary": _abstract_snippet(abstract),
             })
- 
+
         batch_text = "\n\n".join(
             f"Title: {r[1] or ''}\nAbstract:\n{r[2] or ''}"
             for r in batch_rows
@@ -1468,7 +1443,7 @@ def generate_research_gaps(topic):
         prompt = build_prompt(batch_text)
         result = None
         raw    = ""
- 
+
         for attempt in range(1, 4):
             print(f"  Calling Ollama (attempt {attempt}/3)...")
             call_start = time.time()
@@ -1480,25 +1455,25 @@ def generate_research_gaps(topic):
             except requests.RequestException as e:
                 print(f"  Could not reach Ollama: {e}")
                 break
- 
+
             print(f"  Responded in {time.time() - call_start:.1f}s")
             raw       = data.get("response", "")
             candidate = safe_parse_json(raw)
- 
+
             if candidate is not None and is_valid_result(candidate):
                 result = candidate
                 break
             print(f"  Attempt {attempt}: invalid schema, retrying...")
- 
+
         if result is None:
             print(f"  Batch {batch_num}: skipped.")
             continue
- 
+
         batches_succeeded += 1
         batch_gaps = result.get("research_gaps", [])
         for gap in batch_gaps:
             description = gap.get("description", "")
- 
+
             novelty = gap.get("novelty_score")
             feasibility = gap.get("feasibility_score")
             novelty = novelty if isinstance(novelty, (int, float)) else None
@@ -1508,12 +1483,7 @@ def generate_research_gaps(topic):
                 if novelty is not None and feasibility is not None
                 else None
             )
- 
-            # CHANGED: related_entities is now whatever categorized dict the
-            # LLM returned (e.g. {"herbs": [...], "chemicals": [...]}),
-            # per the "group entities by category" request. If the LLM
-            # returns a flat list instead (schema drift), wrap it under an
-            # "uncategorized" key rather than dropping it.
+
             raw_entities = gap.get("related_entities", {})
             if isinstance(raw_entities, list):
                 related_entities = {"uncategorized": raw_entities} if raw_entities else {}
@@ -1521,11 +1491,7 @@ def generate_research_gaps(topic):
                 related_entities = {k: v for k, v in raw_entities.items() if v}
             else:
                 related_entities = {}
- 
-            # Match each LLM-cited paper_title back to the real paper row
-            # (id/doi/year/link) it was fetched from. Entries the LLM
-            # invented or paraphrased past recognition are dropped rather
-            # than fabricated -- see match_paper_by_title().
+
             matched_papers = []
             for evidence_item in gap.get("supporting_evidence", []) or []:
                 matched = match_paper_by_title(
@@ -1534,21 +1500,21 @@ def generate_research_gaps(topic):
                 if not matched:
                     continue
                 matched_papers.append({
-                    "paper_id":              matched["id"],  # real DB UUID, not a fabricated int
+                    "paper_id":              matched["id"],
                     "title":                 matched["title"],
                     "doi":                   matched["doi"],
                     "year":                  matched["year"],
                     "paper_url":             matched["link"],
                     "gap_specific_abstract": evidence_item.get("gap_specific_abstract", ""),
                 })
- 
+
             most_recent_year = max(
                 (p["year"] for p in matched_papers if p.get("year")),
                 default=None,
             )
- 
+
             all_gap_cards.append({
-                "gap_id":                  "GAP-" + str(uuid.uuid4())[:8],  # reassigned to gap_NNN after dedup below
+                "gap_id":                  "GAP-" + str(uuid.uuid4())[:8],
                 "topic":                   topic,
                 "gap_title":               (gap.get("title") or "Untitled")[:70],
                 "gap_description":         description,
@@ -1559,21 +1525,21 @@ def generate_research_gaps(topic):
                 "papers":                  matched_papers,
                 "supporting_paper_count":  len(matched_papers),
                 "most_recent_year":        most_recent_year,
-                "_batch_num":              batch_num,  # internal only; consumed when building "generation" below
+                "_batch_num":              batch_num,
             })
- 
+
         all_limitations.extend(result.get("common_limitations", []))
         all_opportunities.extend(result.get("unexplored_opportunities", []))
         all_future.extend(result.get("future_directions", []))
         print(f"  Batch {batch_num}: {len(batch_gaps)} gap(s) found.")
- 
+
     _pipeline_step(
         pipeline, "map_batches", t_map_start,
         status="ok" if batches_succeeded else "failed",
         batches_succeeded=batches_succeeded,
         batches_total=len(batches),
     )
- 
+
     if not all_gap_cards:
         return {
             "error": "No gaps found across all batches.",
@@ -1583,8 +1549,8 @@ def generate_research_gaps(topic):
             "research_fronts": research_fronts,
             "overall_trend": overall_trend,
         }, paper_ids
- 
-    # --- Step: dedup gaps across batches ---
+
+    report("Deduplicating gaps across batches...")
     t0 = time.time()
     seen_titles = set()
     unique_gaps = []
@@ -1593,13 +1559,7 @@ def generate_research_gaps(topic):
         if key not in seen_titles:
             seen_titles.add(key)
             unique_gaps.append(card)
- 
-    # NEW: reassign sequential gap_001-style ids (matches requested schema)
-    # and attach the "generation" metadata block. cluster_id here is the
-    # batch number that produced the gap -- gaps come from per-batch LLM
-    # calls, not from the k-means research-front clusters, so this is
-    # honestly a batch id, not a front id; documented rather than silently
-    # relabeled.
+
     generated_at_iso = datetime.now(timezone.utc).isoformat()
     for idx, card in enumerate(unique_gaps, start=1):
         card["gap_id"] = f"gap_{idx:03d}"
@@ -1609,29 +1569,24 @@ def generate_research_gaps(topic):
             "llm_model":      OLLAMA_MODEL,
             "created_at":     generated_at_iso,
         }
- 
+
     _pipeline_step(
         pipeline, "dedup_gaps", t0,
         status="ok",
         gaps_before_dedup=len(all_gap_cards),
         gaps_after_dedup=len(unique_gaps),
     )
- 
+
     print(f"\nTotal: {len(all_gap_cards)} gaps → {len(unique_gaps)} after dedup.")
- 
-    # NEW: sort feature -- rather than pre-sorting gap_cards itself (which
-    # would force a single fixed order), expose ready-made gap_id orderings
-    # for each requested sort so the frontend can switch sort mode without
-    # re-sorting client-side or needing every field's exact semantics.
-    # "Most Recent" uses most_recent_year; missing/None values sort last.
+
     def _sort_key(field, reverse_none_last=True):
         def key(card):
             val = card.get(field)
             if val is None:
-                return (1, 0)  # None always sorts after real values
+                return (1, 0)
             return (0, -val if reverse_none_last else val)
         return key
- 
+
     gap_sort_orders = {
         "novelty":            [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("novelty_score"))],
         "feasibility":        [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("feasibility_score"))],
@@ -1639,18 +1594,20 @@ def generate_research_gaps(topic):
         "most_recent":        [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("most_recent_year"))],
         "overall_score":      [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("overall_score"))],
     }
- 
+
+    report(f"Done — {len(unique_gaps)} gaps identified.")
+
     output = {
         "topic":              topic,
         "generated_at":       datetime.now(timezone.utc).isoformat(),
         "papers_scanned":     len(all_rows),
         "batches_processed":  f"{batches_succeeded}/{len(batches)}",
-        "papers":             papers_summary,   # per-paper title/year/link/snippet
-        "paper_links":        paper_links,      # flat id -> link list for every paper fetched
-        "pipeline":           pipeline,         # trace of every fetch/process stage
-        "research_fronts":    research_fronts,  # clustered papers, labeled + trend per cluster
-        "overall_trend":      overall_trend,    # trend across all fetched papers combined
-        "gap_sort_orders":    gap_sort_orders,   # NEW: gap_id order for each sort option; frontend picks one
+        "papers":             papers_summary,
+        "paper_links":        paper_links,
+        "pipeline":           pipeline,
+        "research_fronts":    research_fronts,
+        "overall_trend":      overall_trend,
+        "gap_sort_orders":    gap_sort_orders,
         "summary": {
             "research_gaps":            [g["gap_description"] for g in unique_gaps],
             "common_limitations":       list(dict.fromkeys(all_limitations)),
@@ -1659,8 +1616,7 @@ def generate_research_gaps(topic):
         },
         "gap_cards": unique_gaps,
     }
-    return output, paper_ids
- 
+    return output, paper_ids 
  
 # -------------------------
 # Output helpers
@@ -1787,8 +1743,8 @@ if __name__ == "__main__":
  
     if "error" not in result:
         try:
-            n = save_gap_cards_to_db(result, paper_ids)
-            print(f"Saved {n} gap card(s) to gap_candidates table.")
+            id_map = save_gap_cards_to_db(result, paper_ids)
+            print(f"Saved {len(id_map)} gap card(s) to gap_candidates table.")
         except Exception as e:
             print(f"Note: could not write to DB ({e}). "
                   f"JSON file is saved and usable.")

@@ -114,10 +114,33 @@ def _supporting_papers(cur, source_ids):
         return []
 
 
+
 def _shape_gap(row, cur):
     n = float(row["novelty_score"])     if row.get("novelty_score")     is not None else None
     f = float(row["feasibility_score"]) if row.get("feasibility_score") is not None else None
-    overall = round((n + f) / 2, 1)    if n is not None and f is not None else None
+    overall = round((n + f) / 2, 1) if n is not None and f is not None else None
+
+    # Prefer the rich, gap-specific detail saved at generation time
+    detail = row.get("supporting_papers_detail")
+    if detail:
+        try:
+            papers_data = _json.loads(detail) if isinstance(detail, str) else detail
+            supporting = [{
+                "id":                    p.get("paper_id", ""),
+                "title":                 p.get("title", "Untitled"),
+                "year":                  p.get("year"),
+                "pmid":                  "",
+                "doi":                   p.get("doi", ""),
+                "link":                  p.get("paper_url"),
+                "paper_url":             p.get("paper_url"),
+                "gap_specific_abstract": p.get("gap_specific_abstract", ""),
+                "citation_count":        None,
+            } for p in papers_data]
+        except Exception:
+            supporting = _supporting_papers(cur, row.get("source_paper_ids") or [])
+    else:
+        # Fallback for older gaps saved before this column existed
+        supporting = _supporting_papers(cur, row.get("source_paper_ids") or [])
 
     return {
         "id":                str(row["id"]),
@@ -135,7 +158,7 @@ def _shape_gap(row, cur):
         "status":            row.get("status") or "scored",
         "related_entities":  _parse_entities(row.get("related_entities")),
         "cluster_distance":  row.get("cluster_distance"),
-        "supporting_papers": _supporting_papers(cur, row.get("source_paper_ids") or []),
+        "supporting_papers": supporting,
     }
 
 
@@ -176,9 +199,10 @@ def get_gaps(
 
         cur.execute(f"""
             SELECT g.id, g.gap_id, g.title, g.description, g.domain, g.subdomain,
-                   g.topic, g.novelty_score, g.feasibility_score, g.study_count,
-                   g.last_published_year, g.status,
-                   g.source_paper_ids, g.related_entities, g.cluster_distance
+                g.topic, g.novelty_score, g.feasibility_score, g.study_count,
+                g.last_published_year, g.status,
+                g.source_paper_ids, g.related_entities, g.cluster_distance,
+                g.supporting_papers_detail
             FROM gap_candidates g
             WHERE {" AND ".join(conds)}
             ORDER BY {sort_col} DESC NULLS LAST
@@ -313,21 +337,12 @@ def _run_pipeline(job_id: str, topic: str):
     import sys, os
     sys.path.insert(0, os.path.dirname(__file__))
     try:
-        _jobs[job_id]["message"] = "Fetching papers from database..."
         from research_gap import generate_research_gaps, save_gap_cards_to_db
-        import research_gap as rg
 
-        original_call = rg.call_ollama
-        batch_n = {"n": 0}
+        def progress_callback(msg):
+            _jobs[job_id]["message"] = msg
 
-        def _progress(prompt):
-            batch_n["n"] += 1
-            _jobs[job_id]["message"] = f"Analysing batch {batch_n['n']} with Ollama (~1 min per batch)..."
-            return original_call(prompt)
-
-        rg.call_ollama = _progress
-        result, paper_ids = generate_research_gaps(topic)
-        rg.call_ollama = original_call
+        result, paper_ids = generate_research_gaps(topic, progress_callback=progress_callback)
 
         if "error" in result:
             _jobs[job_id]["status"] = "error"
@@ -336,19 +351,36 @@ def _run_pipeline(job_id: str, topic: str):
 
         n_gaps = len(result.get("gap_cards", []))
         _jobs[job_id]["message"] = f"Saving {n_gaps} gaps to database..."
-        save_gap_cards_to_db(result, paper_ids)
+        id_map = save_gap_cards_to_db(result, paper_ids)
 
-        _jobs[job_id]["message"] = "Scoring gaps for novelty and feasibility..."
-        from scorer import run_scoring
-        run_scoring()
+        # Scores already computed by the LLM per-gap in research_gap.py —
+        # no separate scorer.py pass needed anymore.
 
         _jobs[job_id]["research_fronts"] = result.get("research_fronts", [])
         _jobs[job_id]["overall_trend"]   = result.get("overall_trend", {})
 
+        # Automatic hypothesis generation — uses the in-memory gap_cards
+        # directly, no manual terminal run required.
+        from hypothesis import run_hypothesis_for_search
+
+        def hyp_progress(msg):
+            _jobs[job_id]["message"] = msg
+
+        hyp_result = run_hypothesis_for_search(
+            gap_cards=result.get("gap_cards", []),
+            id_map=id_map,
+            research_fronts=result.get("research_fronts", []),
+            topic=topic,
+            progress_callback=hyp_progress,
+        )
+
         gaps = _fetch_gaps_for_topic(topic)
         _jobs[job_id]["status"]  = "done"
-        _jobs[job_id]["message"] = f"Done — {len(gaps)} gaps found for '{topic}'"
-        _jobs[job_id]["gaps"]    = gaps
+        _jobs[job_id]["message"] = (
+            f"Done — {len(gaps)} gaps, "
+            f"{hyp_result['seeded']} hypotheses generated for '{topic}'"
+        )
+        _jobs[job_id]["gaps"] = gaps
 
     except Exception as e:
         _jobs[job_id]["status"] = "error"
@@ -360,9 +392,10 @@ def _fetch_gaps_for_topic(topic: str) -> list:
     try:
         cur.execute("""
             SELECT g.id, g.gap_id, g.title, g.description, g.domain, g.subdomain,
-                   g.topic, g.novelty_score, g.feasibility_score, g.study_count,
-                   g.last_published_year, g.status,
-                   g.source_paper_ids, g.related_entities, g.cluster_distance
+                g.topic, g.novelty_score, g.feasibility_score, g.study_count,
+                g.last_published_year, g.status,
+                g.source_paper_ids, g.related_entities, g.cluster_distance,
+                g.supporting_papers_detail
             FROM gap_candidates g
             WHERE g.topic ILIKE %s AND g.status IN ('scored','seeded')
             ORDER BY g.novelty_score DESC NULLS LAST
