@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable */
 import React, { useEffect, useState } from "react";
-import { fetchPapers, extractEntities, fetchPaperEntities } from "../../lib/api";
+import { fetchPapers } from "@/lib/api";
 import { Badge } from "../shared/Badge";
 import { Button } from "../shared/Button";
 import { Card } from "../shared/Card";

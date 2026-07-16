@@ -1,12 +1,14 @@
 # api_server.py
-# Run: uvicorn api_server:app --reload --port 8000
-# Install: pip install fastapi uvicorn psycopg2-binary
-
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import psycopg2
 import psycopg2.extras
+import threading
+import json as _json
+import re
+import uuid as uuid_lib
+from datetime import datetime
 from config import DB_CONFIG
 
 app = FastAPI(title="RISHI-AI API")
@@ -19,11 +21,128 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_jobs: dict = {}
+
+
 def get_conn():
-    return psycopg2.connect(
-        **DB_CONFIG,
-        cursor_factory=psycopg2.extras.RealDictCursor
-    )
+    return psycopg2.connect(**DB_CONFIG, cursor_factory=psycopg2.extras.RealDictCursor)
+
+
+# ── helpers ────────────────────────────────────────────────────
+def _build_link(pmid, doi):
+    if pmid:
+        return f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+    if doi:
+        return f"https://doi.org/{str(doi).strip()}"
+    return None
+
+
+def _year_from_row(p):
+    if p.get("published_at"):
+        try:
+            return p["published_at"].year
+        except Exception:
+            pass
+    if p.get("published_date"):
+        try:
+            m = re.search(r"(19|20)\d{2}", str(p["published_date"]))
+            if m:
+                return int(m.group(0))
+        except Exception:
+            pass
+    return None
+
+
+def _snippet(abstract, n=40):
+    if not abstract:
+        return "No abstract available."
+    w = abstract.split()
+    return (" ".join(w[:n]) + "...") if len(w) > n else abstract.strip()
+
+
+def _parse_entities(val):
+    """
+    related_entities is stored as JSONB.
+    New format: categorized dict {"herbs": [...], "chemicals": [...]}
+    Old format: flat list ["entity1", "entity2"]
+    Returns a dict in all cases.
+    """
+    try:
+        if not val:
+            return {}
+        data = _json.loads(val) if isinstance(val, str) else val
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if v}
+        if isinstance(data, list):
+            return {"uncategorized": data} if data else {}
+        return {}
+    except Exception:
+        return {}
+
+
+def _supporting_papers(cur, source_ids):
+    if not source_ids:
+        return []
+    try:
+        cur.execute("""
+            SELECT id, title, abstract, pmid, doi,
+                   published_at, published_date, citation_count
+            FROM papers
+            WHERE id = ANY(%s::uuid[])
+            ORDER BY published_at DESC NULLS LAST
+            LIMIT 15
+        """, (source_ids,))
+        out = []
+        for p in cur.fetchall():
+            pmid = p["pmid"]
+            doi  = p.get("doi")
+            link = _build_link(pmid, doi)
+            out.append({
+                "id":                    str(p["id"]),
+                "title":                 p["title"] or "Untitled",
+                "year":                  _year_from_row(p),
+                "pmid":                  pmid or "",
+                "doi":                   doi or "",
+                "link":                  link,
+                "paper_url":             link,
+                "gap_specific_abstract": _snippet(p["abstract"]),
+                "citation_count":        p.get("citation_count"),
+            })
+        return out
+    except Exception as e:
+        print(f"  supporting_papers error: {e}")
+        return []
+
+
+def _shape_gap(row, cur):
+    n = float(row["novelty_score"])     if row.get("novelty_score")     is not None else None
+    f = float(row["feasibility_score"]) if row.get("feasibility_score") is not None else None
+    overall = round((n + f) / 2, 1)    if n is not None and f is not None else None
+
+    return {
+        "id":                str(row["id"]),
+        "gap_id":            row.get("gap_id") or str(row["id"])[:8],
+        "topic":             row.get("topic") or "",
+        "domain":            (row.get("domain") or "GENERAL").upper(),
+        "subdomain":         (row.get("subdomain") or "").upper(),
+        "title":             row.get("title") or "",
+        "description":       row.get("description") or "",
+        "novelty_score":     round(n, 1) if n is not None else None,
+        "feasibility_score": round(f, 1) if f is not None else None,
+        "overall_score":     overall,
+        "study_count":       row.get("study_count") or 0,
+        "last_published_year": row.get("last_published_year"),
+        "status":            row.get("status") or "scored",
+        "related_entities":  _parse_entities(row.get("related_entities")),
+        "cluster_distance":  row.get("cluster_distance"),
+        "supporting_papers": _supporting_papers(cur, row.get("source_paper_ids") or []),
+    }
+
+
+# ── GET /api/health ────────────────────────────────────────────
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "mode": "full"}
 
 
 # ── GET /api/gaps ──────────────────────────────────────────────
@@ -32,152 +151,135 @@ def get_gaps(
     domain: Optional[str] = Query(None),
     sort:   str            = Query("novelty"),
     limit:  int            = Query(50),
+    topic:  Optional[str]  = Query(None),
 ):
-    sort_col = "novelty_score" if sort == "novelty" else "feasibility_score"
+    # sort column mapping
+    sort_col_map = {
+        "novelty":           "novelty_score",
+        "feasibility":       "feasibility_score",
+        "supporting_papers": "study_count",
+        "most_recent":       "last_published_year",
+        "overall":           "novelty_score",  # fallback; overall computed in Python
+    }
+    sort_col = sort_col_map.get(sort, "novelty_score")
 
     conn = get_conn()
     cur  = conn.cursor()
-
     try:
+        conds  = ["g.status IN ('scored','seeded')"]
+        params = []
         if domain and domain.lower() not in ("all", "all domains"):
-            cur.execute(f"""
-                SELECT id, title, description, domain, subdomain,
-                       novelty_score, feasibility_score, study_count, status
-                FROM gap_candidates
-                WHERE status IN ('scored','seeded')
-                  AND domain ILIKE %s
-                ORDER BY {sort_col} DESC NULLS LAST
-                LIMIT %s
-            """, (f"%{domain}%", limit))
-        else:
-            cur.execute(f"""
-                SELECT id, title, description, domain, subdomain,
-                       novelty_score, feasibility_score, study_count, status
-                FROM gap_candidates
-                WHERE status IN ('scored','seeded')
-                ORDER BY {sort_col} DESC NULLS LAST
-                LIMIT %s
-            """, (limit,))
+            conds.append("g.domain ILIKE %s"); params.append(f"%{domain}%")
+        if topic:
+            conds.append("g.topic ILIKE %s"); params.append(f"%{topic}%")
+        params.append(limit)
 
+        cur.execute(f"""
+            SELECT g.id, g.gap_id, g.title, g.description, g.domain, g.subdomain,
+                   g.topic, g.novelty_score, g.feasibility_score, g.study_count,
+                   g.last_published_year, g.status,
+                   g.source_paper_ids, g.related_entities, g.cluster_distance
+            FROM gap_candidates g
+            WHERE {" AND ".join(conds)}
+            ORDER BY {sort_col} DESC NULLS LAST
+            LIMIT %s
+        """, params)
         rows = cur.fetchall()
+        gaps = [_shape_gap(r, cur) for r in rows]
+
+        # client-side sort by overall is approximate above; re-sort here
+        if sort == "overall":
+            gaps.sort(key=lambda g: (g["overall_score"] or 0), reverse=True)
+
     except Exception as e:
-        cur.close()
-        conn.close()
+        cur.close(); conn.close()
         return {"error": str(e), "gaps": [], "total": 0}
 
-    cur.close()
-    conn.close()
-
-    gaps = []
-    for row in rows:
-        gaps.append({
-            "id":                str(row["id"]),
-            "domain":            (row["domain"] or "GENERAL").upper(),
-            "subdomain":         (row["subdomain"] or "").upper(),
-            "title":             row["title"] or "",
-            "description":       row["description"] or "",
-            "novelty_score":     round(float(row["novelty_score"]), 1)
-                                 if row["novelty_score"] is not None else None,
-            "feasibility_score": round(float(row["feasibility_score"]), 1)
-                                 if row["feasibility_score"] is not None else None,
-            "study_count":       row["study_count"] or 0,
-            "status":            row["status"] or "scored",
-        })
-
+    cur.close(); conn.close()
     return {"gaps": gaps, "total": len(gaps)}
 
 
 # ── GET /api/gaps/domains ──────────────────────────────────────
 @app.get("/api/gaps/domains")
 def get_domains():
-    conn = get_conn()
-    cur  = conn.cursor()
+    conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT DISTINCT UPPER(domain) AS domain
-            FROM gap_candidates
+            SELECT DISTINCT UPPER(domain) AS domain FROM gap_candidates
             WHERE status IN ('scored','seeded')
-              AND domain IS NOT NULL
-              AND domain != ''
+              AND domain IS NOT NULL AND domain != ''
             ORDER BY domain
         """)
         rows = cur.fetchall()
     except Exception:
-        cur.close()
-        conn.close()
-        return {"domains": []}
-
-    cur.close()
-    conn.close()
+        cur.close(); conn.close(); return {"domains": []}
+    cur.close(); conn.close()
     return {"domains": [r["domain"] for r in rows]}
 
 
 # ── GET /api/hypotheses ────────────────────────────────────────
 @app.get("/api/hypotheses")
-def get_hypotheses(limit: int = Query(50)):
-    conn = get_conn()
-    cur  = conn.cursor()
+def get_hypotheses(
+    limit:   int           = Query(50),
+    gap_ids: Optional[str] = Query(None),
+):
+    conn = get_conn(); cur = conn.cursor()
     try:
-        cur.execute("""
-            SELECT id, gap_id, gap_title,
-                   population, intervention, comparator, outcome,
-                   hypothesis_text, confidence, created_at
-            FROM hypothesis_seeds
-            ORDER BY created_at DESC
-            LIMIT %s
-        """, (limit,))
+        if gap_ids:
+            id_list = [g.strip() for g in gap_ids.split(",") if g.strip()]
+            cur.execute("""
+                SELECT id, gap_id, gap_title, population, intervention,
+                       comparator, outcome, hypothesis_text, confidence, created_at
+                FROM hypothesis_seeds
+                WHERE gap_id = ANY(%s::uuid[])
+                ORDER BY created_at DESC LIMIT %s
+            """, (id_list, limit))
+        else:
+            cur.execute("""
+                SELECT id, gap_id, gap_title, population, intervention,
+                       comparator, outcome, hypothesis_text, confidence, created_at
+                FROM hypothesis_seeds
+                ORDER BY created_at DESC LIMIT %s
+            """, (limit,))
         rows = cur.fetchall()
     except Exception as e:
-        cur.close()
-        conn.close()
+        cur.close(); conn.close()
         return {"error": str(e), "seeds": [], "total": 0}
-
-    cur.close()
-    conn.close()
-
-    seeds = []
-    for row in rows:
-        seeds.append({
-            "id":              str(row["id"]),
-            "gap_id":          str(row["gap_id"]) if row["gap_id"] else None,
-            "gap_title":       row["gap_title"] or "",
-            "population":      row["population"] or "",
-            "intervention":    row["intervention"] or "",
-            "comparator":      row["comparator"] or "",
-            "outcome":         row["outcome"] or "",
-            "hypothesis_text": row["hypothesis_text"] or "",
-            "confidence":      row["confidence"] or "medium",
-            "created_at":      row["created_at"].isoformat()
-                               if row["created_at"] else "",
-        })
-
-    return {"seeds": seeds, "total": len(seeds)}
+    cur.close(); conn.close()
+    return {
+        "seeds": [{
+            "id":              str(r["id"]),
+            "gap_id":          str(r["gap_id"]) if r["gap_id"] else None,
+            "gap_title":       r["gap_title"] or "",
+            "population":      r["population"] or "",
+            "intervention":    r["intervention"] or "",
+            "comparator":      r["comparator"] or "",
+            "outcome":         r["outcome"] or "",
+            "hypothesis_text": r["hypothesis_text"] or "",
+            "confidence":      r["confidence"] or "medium",
+            "created_at":      r["created_at"].isoformat() if r["created_at"] else "",
+        } for r in rows],
+        "total": len(rows),
+    }
 
 
 # ── GET /api/stats ─────────────────────────────────────────────
 @app.get("/api/stats")
 def get_stats():
-    conn = get_conn()
-    cur  = conn.cursor()
+    conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT
-                COUNT(*) FILTER (WHERE status IN ('scored','seeded')) AS gaps,
-                AVG(novelty_score) FILTER (WHERE novelty_score IS NOT NULL) AS avg_novelty
+            SELECT COUNT(*) FILTER (WHERE status IN ('scored','seeded')) AS gaps,
+                   AVG(novelty_score) FILTER (WHERE novelty_score IS NOT NULL) AS avg_novelty
             FROM gap_candidates
         """)
         g = cur.fetchone()
-
         cur.execute("SELECT COUNT(*) AS c FROM hypothesis_seeds")
         h = cur.fetchone()
     except Exception:
-        cur.close()
-        conn.close()
+        cur.close(); conn.close()
         return {"gaps_identified": 0, "hypothesis_seeds": 0, "avg_novelty_score": 0.0}
-
-    cur.close()
-    conn.close()
-
+    cur.close(); conn.close()
     return {
         "gaps_identified":   int(g["gaps"] or 0),
         "hypothesis_seeds":  int(h["c"] or 0),
@@ -185,17 +287,7 @@ def get_stats():
     }
 
 
-# ── add these imports at the top of api_server.py ─────────────
-import threading
-import uuid as uuid_lib
-from datetime import datetime
-
-# In-memory job store — tracks running searches
-_jobs: dict = {}
-
 # ── POST /api/search ───────────────────────────────────────────
-# Starts a background research job for a topic.
-# Returns a job_id to poll with GET /api/search/status/{job_id}
 @app.post("/api/search")
 def start_search(body: dict):
     topic = (body.get("topic") or "").strip()
@@ -204,160 +296,85 @@ def start_search(body: dict):
 
     job_id = str(uuid_lib.uuid4())
     _jobs[job_id] = {
-        "status":  "running",
-        "topic":   topic,
-        "message": "Fetching papers...",
-        "gaps":    [],
-        "error":   None,
-        "started": datetime.now().isoformat(),
+        "status":          "running",
+        "topic":           topic,
+        "message":         "Starting pipeline...",
+        "gaps":            [],
+        "research_fronts": [],
+        "overall_trend":   {},
+        "error":           None,
+        "started":         datetime.now().isoformat(),
     }
-
-    # Run the pipeline in a background thread so the HTTP response
-    # returns immediately and the frontend can poll for status.
-    thread = threading.Thread(
-        target=_run_pipeline,
-        args=(job_id, topic),
-        daemon=True,
-    )
-    thread.start()
-
+    threading.Thread(target=_run_pipeline, args=(job_id, topic), daemon=True).start()
     return {"job_id": job_id, "status": "running"}
 
 
 def _run_pipeline(job_id: str, topic: str):
-    """
-    Background thread — runs the full pipeline:
-    1. Fetch papers + call Ollama → generate gaps
-    2. Insert gaps into DB
-    3. Score all gaps
-    4. Store results so frontend can retrieve them
-    """
     import sys, os
-    # Import your existing pipeline functions
-    # Adjust the path if api_server.py is not in the same folder as research_gap.py
     sys.path.insert(0, os.path.dirname(__file__))
-
     try:
-        # ── Step 1: generate gaps via Ollama ──────────────────
-        _jobs[job_id]["message"] = "Calling Ollama to identify gaps (this takes 1-3 minutes)..."
+        _jobs[job_id]["message"] = "Fetching papers from database..."
         from research_gap import generate_research_gaps, save_gap_cards_to_db
+        import research_gap as rg
+
+        original_call = rg.call_ollama
+        batch_n = {"n": 0}
+
+        def _progress(prompt):
+            batch_n["n"] += 1
+            _jobs[job_id]["message"] = f"Analysing batch {batch_n['n']} with Ollama (~1 min per batch)..."
+            return original_call(prompt)
+
+        rg.call_ollama = _progress
         result, paper_ids = generate_research_gaps(topic)
+        rg.call_ollama = original_call
 
         if "error" in result:
-            _jobs[job_id]["status"]  = "error"
-            _jobs[job_id]["error"]   = result["error"]
+            _jobs[job_id]["status"] = "error"
+            _jobs[job_id]["error"]  = result["error"]
             return
 
-        # ── Step 2: save gaps to DB ───────────────────────────
-        _jobs[job_id]["message"] = "Saving gaps to database..."
-        _save_gaps_from_result(result, paper_ids)
+        n_gaps = len(result.get("gap_cards", []))
+        _jobs[job_id]["message"] = f"Saving {n_gaps} gaps to database..."
+        save_gap_cards_to_db(result, paper_ids)
 
-        # ── Step 3: score all gaps ────────────────────────────
         _jobs[job_id]["message"] = "Scoring gaps for novelty and feasibility..."
-        _score_all_gaps()
+        from scorer import run_scoring
+        run_scoring()
 
-        # ── Step 4: fetch the new scored gaps to return ───────
-        _jobs[job_id]["message"] = "Done"
+        _jobs[job_id]["research_fronts"] = result.get("research_fronts", [])
+        _jobs[job_id]["overall_trend"]   = result.get("overall_trend", {})
+
         gaps = _fetch_gaps_for_topic(topic)
-        _jobs[job_id]["status"] = "done"
-        _jobs[job_id]["gaps"]   = gaps
+        _jobs[job_id]["status"]  = "done"
+        _jobs[job_id]["message"] = f"Done — {len(gaps)} gaps found for '{topic}'"
+        _jobs[job_id]["gaps"]    = gaps
 
     except Exception as e:
         _jobs[job_id]["status"] = "error"
         _jobs[job_id]["error"]  = str(e)
 
 
-def _save_gaps_from_result(data: dict, paper_ids: list):
-    """Insert gap cards from JSON result into gap_candidates table."""
-    import json as _json
-    import uuid as _uuid
-
-    topic     = data.get("topic", "unknown")
-    gap_cards = data.get("gap_cards", [])
-    conn      = get_conn()
-    cur       = conn.cursor()
-
-    for card in gap_cards:
-        related   = card.get("related_entities", [])
-        domain    = related[0] if len(related) > 0 else topic
-        subdomain = related[1] if len(related) > 1 else ""
-        cd        = card.get("cluster_distance")
-        coverage  = round(1.0 - float(cd), 4) if cd is not None else 0.5
-
-        try:
-            cur.execute("""
-                INSERT INTO gap_candidates (
-                    id, gap_id, topic, title, description,
-                    domain, subdomain, related_entities,
-                    source_paper_ids, study_count,
-                    last_published_year, cluster_distance,
-                    coverage_score, status
-                ) VALUES (
-                    %s, %s, %s, %s, %s,
-                    %s, %s, %s::jsonb,
-                    %s::uuid[], %s,
-                    %s, %s,
-                    %s, 'new'
-                ) ON CONFLICT DO NOTHING
-            """, (
-                str(_uuid.uuid4()),
-                card.get("gap_id", ""),
-                topic,
-                card.get("title", "Untitled"),
-                card.get("description", ""),
-                domain, subdomain,
-                _json.dumps(related),
-                [],
-                card.get("paper_count", 0),
-                card.get("last_published_year"),
-                cd,
-                coverage,
-            ))
-        except Exception:
-            conn.rollback()
-            continue
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-
-def _score_all_gaps():
-    """Re-run scorer on all unscored gaps."""
-    import sys, os
-    sys.path.insert(0, os.path.dirname(__file__))
-    from scorer import run_scoring
-    run_scoring()
-
-
 def _fetch_gaps_for_topic(topic: str) -> list:
-    """Return the freshly scored gaps for this topic."""
-    conn = get_conn()
-    cur  = conn.cursor()
-    cur.execute("""
-        SELECT id, title, description, domain, subdomain,
-               novelty_score, feasibility_score, study_count, status
-        FROM gap_candidates
-        WHERE topic ILIKE %s
-          AND status IN ('scored', 'seeded')
-        ORDER BY novelty_score DESC NULLS LAST
-        LIMIT 20
-    """, (f"%{topic}%",))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    return [{
-        "id":                str(r["id"]),
-        "domain":            (r["domain"] or "GENERAL").upper(),
-        "subdomain":         (r["subdomain"] or "").upper(),
-        "title":             r["title"] or "",
-        "description":       r["description"] or "",
-        "novelty_score":     round(float(r["novelty_score"]), 1) if r["novelty_score"] else None,
-        "feasibility_score": round(float(r["feasibility_score"]), 1) if r["feasibility_score"] else None,
-        "study_count":       r["study_count"] or 0,
-        "status":            r["status"] or "scored",
-    } for r in rows]
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT g.id, g.gap_id, g.title, g.description, g.domain, g.subdomain,
+                   g.topic, g.novelty_score, g.feasibility_score, g.study_count,
+                   g.last_published_year, g.status,
+                   g.source_paper_ids, g.related_entities, g.cluster_distance
+            FROM gap_candidates g
+            WHERE g.topic ILIKE %s AND g.status IN ('scored','seeded')
+            ORDER BY g.novelty_score DESC NULLS LAST
+            LIMIT 50
+        """, (f"%{topic}%",))
+        rows = cur.fetchall()
+        gaps = [_shape_gap(r, cur) for r in rows]
+    except Exception as e:
+        print(f"_fetch_gaps_for_topic error: {e}")
+        gaps = []
+    cur.close(); conn.close()
+    return gaps
 
 
 # ── GET /api/search/status/{job_id} ───────────────────────────
