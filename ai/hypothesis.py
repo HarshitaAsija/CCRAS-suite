@@ -1,7 +1,13 @@
 # hypothesis.py
-# T13 — Generate PICO hypothesis seeds for high-scoring gaps
-# Reads from gap_candidates where novelty + feasibility are both good,
-# calls Ollama to generate structured PICO JSON, writes back to DB.
+# T13 — Generate PICO hypothesis seeds.
+#
+# Two ways to run:
+#   1. Automatic (preferred): called directly from api_server.py right
+#      after a search completes, using the in-memory gap_cards from
+#      research_gap.py — no DB round-trip, no manual terminal run needed.
+#   2. Manual/backfill: run_hypothesis_seeding() below still works from
+#      the terminal for gaps already sitting in gap_candidates with no
+#      hypothesis yet (e.g. seeded before this pipeline existed).
 
 import json
 import os
@@ -13,231 +19,131 @@ import psycopg2
 from config import (
     DB_CONFIG,
     OLLAMA_GENERATE_URL,
-    OLLAMA_EMBED_URL,
     OLLAMA_MODEL,
-    OLLAMA_EMBED_MODEL,
     OLLAMA_GENERATE_TIMEOUT,
-    OLLAMA_EMBED_TIMEOUT,
 )
 
-# ─────────────────────────────────────────────
-# 1. CONNECT TO DB
-# ─────────────────────────────────────────────
-def get_conn():
-    return psycopg2.connect(**DB_CONFIG)
-
-
-# Only generate hypotheses for gaps above these thresholds
-# Adjust if too few or too many gaps qualify
 NOVELTY_MIN     = 4.0
 FEASIBILITY_MIN = 3.0
 
 
-# ─────────────────────────────────────────────
-# DB HELPERS
-# ─────────────────────────────────────────────
 def get_conn():
     return psycopg2.connect(**DB_CONFIG)
 
 
-# def ensure_hypothesis_table(conn):
-#     """
-#     Creates the hypothesis_seeds table if it doesn't exist.
-#     Each row is one PICO hypothesis linked to a gap_candidate.
-#     """
-#     cur = conn.cursor()
-#     cur.execute("""
-#         CREATE TABLE IF NOT EXISTS hypothesis_seeds (
-#             id               UUID PRIMARY KEY,
-#             gap_id           UUID REFERENCES gap_candidates(id),
-#             gap_title        TEXT,
-#             population       TEXT,
-#             intervention     TEXT,
-#             comparator       TEXT,
-#             outcome          TEXT,
-#             hypothesis_text  TEXT,
-#             confidence       TEXT,
-#             status           TEXT DEFAULT 'seeded',
-#             created_at       TIMESTAMP DEFAULT now()
-#         );
-#     """)
-#     conn.commit()
-#     cur.close()
-#     print("hypothesis_seeds table ready.")
+# ─────────────────────────────────────────────
+# RESEARCH FRONT CONTEXT
+# Find the front whose keywords/label most overlap
+# with this gap's related entities + title, so the
+# LLM gets "this gap sits within the X research
+# direction" context instead of no framing at all.
+# ─────────────────────────────────────────────
+def find_relevant_front(gap_title, related_entities, research_fronts):
+    if not research_fronts:
+        return None
 
+    gap_words = set(gap_title.lower().split())
+    for cat_items in (related_entities or {}).values():
+        for item in cat_items:
+            gap_words.update(item.lower().split())
 
-def fetch_qualified_gaps(conn):
-    """
-    Fetch gaps that are:
-    - scored (not NULL)
-    - above novelty and feasibility thresholds
-    - not already seeded
-    """
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT
-            g.id,
-            g.title,
-            g.description,
-            g.domain,
-            g.subdomain,
-            g.novelty_score,
-            g.feasibility_score,
-            g.study_count
-        FROM gap_candidates g
-        WHERE g.novelty_score    >= %s
-          AND g.feasibility_score >= %s
-          AND g.status = 'scored'
-          AND g.id NOT IN (
-              SELECT gap_id FROM hypothesis_seeds
-              WHERE gap_id IS NOT NULL
-          )
-        ORDER BY (g.novelty_score + g.feasibility_score) DESC;
-    """, (NOVELTY_MIN, FEASIBILITY_MIN))
+    best_front  = None
+    best_score  = 0
+    for front in research_fronts:
+        front_words = set((front.get("label") or "").lower().split())
+        front_words.update((front.get("display_title") or "").lower().split())
+        overlap = len(gap_words & front_words)
+        if overlap > best_score:
+            best_score = overlap
+            best_front = front
 
-    rows = cur.fetchall()
-    cur.close()
-
-    gaps = []
-    for row in rows:
-        gaps.append({
-            "id":                str(row[0]),
-            "title":             row[1] or "",
-            "description":       row[2] or "",
-            "domain":            row[3] or "",
-            "subdomain":         row[4] or "",
-            "novelty_score":     float(row[5]),
-            "feasibility_score": float(row[6]),
-            "study_count":       row[7] or 0,
-        })
-
-    return gaps
-
-
-def fetch_supporting_papers(conn, gap_title, limit=5):
-    """
-    Pull the most relevant papers for a gap by text matching.
-    Used to give the LLM real context instead of making things up.
-    """
-    cur = conn.cursor()
-
-    # Use key words from gap title to find relevant papers
-    stopwords = {"of", "for", "and", "the", "in", "a", "an",
-                 "to", "vs", "versus", "with", "on", "is", "at",
-                 "from", "by", "into", "its"}
-    words = [w.strip(",.;:()") for w in gap_title.lower().split()
-             if w not in stopwords and len(w) > 3]
-    keywords = words[:4]
-
-    if not keywords:
-        cur.close()
-        return []
-
-    conditions = " OR ".join(
-        ["(title ILIKE %s OR abstract ILIKE %s)"] * len(keywords)
-    )
-    params = []
-    for kw in keywords:
-        params.extend([f"%{kw}%", f"%{kw}%"])
-    params.append(limit)
-
-    cur.execute(f"""
-        SELECT title, abstract
-        FROM papers
-        WHERE {conditions}
-        LIMIT %s
-    """, params)
-
-    rows = cur.fetchall()
-    cur.close()
-
-    return [
-        f"Title: {r[0] or ''}\nAbstract: {(r[1] or '')[:300]}"
-        for r in rows
-    ]
-
-
-def save_hypothesis(conn, gap, pico):
-    """Write one PICO hypothesis to the hypothesis_seeds table."""
-    cur = conn.cursor()
-
-    # Build a readable one-sentence hypothesis from PICO
-    hypothesis_text = (
-        f"In {pico.get('population', '?')}, "
-        f"{pico.get('intervention', '?')} "
-        f"compared to {pico.get('comparator', '?')} "
-        f"will improve {pico.get('outcome', '?')}."
-    )
-
-    cur.execute("""
-        INSERT INTO hypothesis_seeds (
-            id, gap_id, gap_title,
-            population, intervention, comparator, outcome,
-            hypothesis_text, confidence, status
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
-        str(uuid.uuid4()),
-        gap["id"],
-        gap["title"],
-        pico.get("population", ""),
-        pico.get("intervention", ""),
-        pico.get("comparator", ""),
-        pico.get("outcome", ""),
-        hypothesis_text,
-        pico.get("confidence", "medium"),
-        "seeded",
-    ))
-
-    conn.commit()
-    cur.close()
-    return hypothesis_text
-
-
-def mark_gap_seeded(conn, gap_id):
-    """Update gap status from 'scored' to 'seeded'."""
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE gap_candidates
-        SET status = 'seeded'
-        WHERE id = %s
-    """, (gap_id,))
-    conn.commit()
-    cur.close()
+    return best_front if best_score > 0 else (research_fronts[0] if research_fronts else None)
 
 
 # ─────────────────────────────────────────────
-# PROMPT BUILDER
+# BUILD SUPPORTING EVIDENCE BLOCK
+# Uses the gap card's OWN papers (already matched with
+# gap_specific_abstract by research_gap.py) — no keyword
+# re-search needed, this is the real evidence the LLM
+# already cited for this exact gap.
 # ─────────────────────────────────────────────
-def build_pico_prompt(gap, supporting_papers):
-    papers_text = "\n\n".join(supporting_papers) if supporting_papers \
-                  else "No supporting papers available."
+def build_evidence_block(papers, limit=6):
+    if not papers:
+        return "No supporting papers available."
+    lines = []
+    for p in papers[:limit]:
+        year = p.get("year") or "n/a"
+        lines.append(
+            f"- \"{p.get('title', 'Untitled')}\" ({year})\n"
+            f"  Relevance: {p.get('gap_specific_abstract', 'No summary available.')}"
+        )
+    return "\n".join(lines)
+
+
+def build_entities_block(related_entities):
+    if not related_entities:
+        return "No specific entities extracted."
+    lines = []
+    for category, items in related_entities.items():
+        if items:
+            lines.append(f"- {category.title()}: {', '.join(items)}")
+    return "\n".join(lines) if lines else "No specific entities extracted."
+
+
+# ─────────────────────────────────────────────
+# PROMPT BUILDER — enriched with gap + papers +
+# knowledge-graph-style entities + research front
+# ─────────────────────────────────────────────
+def build_pico_prompt(gap_title, gap_description, novelty_score,
+                       feasibility_score, related_entities, papers,
+                       front, topic):
+    evidence_block  = build_evidence_block(papers)
+    entities_block  = build_entities_block(related_entities)
+
+    front_block = "No related research front identified."
+    if front:
+        front_title = front.get("display_title") or front.get("label", "")
+        front_summary = front.get("summary") or ""
+        trend = (front.get("trend") or {}).get("classification", "unknown")
+        front_block = (
+            f"This gap sits within the '{front_title}' research direction "
+            f"({front.get('paper_count', 0)} related papers, trend: {trend}). "
+            f"{front_summary}"
+        )
 
     return f"""You are a senior Ayurveda and biomedical research scientist.
 
-Your task is to generate a PICO research hypothesis for the following research gap.
+Generate a PICO research hypothesis for the following research gap, using
+the supporting evidence, extracted entities, and research context provided.
 
 RESEARCH GAP:
-Title: {gap["title"]}
-Description: {gap["description"]}
-Domain: {gap["domain"]} / {gap["subdomain"]}
-Novelty score: {gap["novelty_score"]}/10
-Feasibility score: {gap["feasibility_score"]}/10
-Existing studies on this topic: {gap["study_count"]}
+Topic: {topic}
+Title: {gap_title}
+Description: {gap_description}
+Novelty score: {novelty_score if novelty_score is not None else 'n/a'}/10
+Feasibility score: {feasibility_score if feasibility_score is not None else 'n/a'}/10
 
-SUPPORTING EVIDENCE FROM LITERATURE:
-{papers_text}
+RELATED ENTITIES (knowledge graph context):
+{entities_block}
 
-Generate a structured PICO hypothesis for this gap.
+RESEARCH FRONT CONTEXT:
+{front_block}
+
+SUPPORTING EVIDENCE (papers that identified this gap):
+{evidence_block}
+
+Generate a structured PICO hypothesis grounded in the evidence above.
 Respond with ONLY valid JSON. No markdown, no code fences, no extra text.
 Use EXACTLY this structure:
 
 {{
-  "population": "who or what is being studied (be specific — e.g. 'adult patients with type 2 diabetes aged 40-65')",
-  "intervention": "what treatment or exposure is being tested (be specific — e.g. 'Ashwagandha root extract 600mg/day for 12 weeks')",
-  "comparator": "what it is compared against (e.g. 'placebo', 'standard care', 'metformin 500mg')",
-  "outcome": "what is being measured (e.g. 'HbA1c levels, fasting blood glucose, and quality of life scores at 12 weeks')",
-  "confidence": "low/medium/high — based on how much supporting evidence exists",
-  "reasoning": "1-2 sentences explaining why this hypothesis is worth testing"
+  "population": "who or what is being studied (be specific)",
+  "intervention": "what treatment or exposure is being tested (be specific — name doses/forms where reasonable)",
+  "comparator": "what it is compared against",
+  "outcome": "what is being measured, with a realistic timeframe",
+  "confidence": "low, medium, or high — based on how much of the evidence above directly supports this specific hypothesis",
+  "confidence_score": "a number from 0 to 100 representing your confidence",
+  "reasoning": "1-2 sentences explaining why this hypothesis follows from the evidence and entities above"
 }}
 """
 
@@ -254,8 +160,8 @@ def call_ollama(prompt):
             "stream": False,
             "format": "json",
             "options": {
-                "temperature": 0.3,   # slightly more creative than scorer
-                "num_predict": 600,
+                "temperature": 0.3,
+                "num_predict": 700,
                 "num_ctx": 4096,
             },
         },
@@ -289,15 +195,17 @@ def is_valid_pico(pico):
     return all(k in pico and pico[k] for k in required)
 
 
-def generate_pico(gap, supporting_papers):
-    prompt = build_pico_prompt(gap, supporting_papers)
+def generate_pico(gap_title, gap_description, novelty_score, feasibility_score,
+                   related_entities, papers, front, topic):
+    prompt = build_pico_prompt(
+        gap_title, gap_description, novelty_score, feasibility_score,
+        related_entities, papers, front, topic
+    )
 
     for attempt in range(1, 4):
-        print(f"    Calling Ollama (attempt {attempt}/3)...")
         try:
             data = call_ollama(prompt)
         except requests.Timeout:
-            print(f"    Timeout on attempt {attempt}, retrying...")
             continue
         except requests.RequestException as e:
             print(f"    Could not reach Ollama: {e}")
@@ -308,89 +216,191 @@ def generate_pico(gap, supporting_papers):
 
         if pico and is_valid_pico(pico):
             return pico
-
-        print(f"    Attempt {attempt}: invalid PICO structure, retrying...")
         time.sleep(1)
 
-    print("    Failed to generate valid PICO after 3 attempts.")
     return None
 
 
 # ─────────────────────────────────────────────
-# MAIN PIPELINE
+# SAVE TO DB
 # ─────────────────────────────────────────────
-def run_hypothesis_seeding():
-    print("=== RISHI-AI Hypothesis Seeding Pipeline (T13) ===\n")
-    print(f"Thresholds: novelty >= {NOVELTY_MIN}, "
-          f"feasibility >= {FEASIBILITY_MIN}\n")
+def save_hypothesis(conn, gap_db_id, gap_title, pico):
+    cur = conn.cursor()
 
+    hypothesis_text = (
+        f"In {pico.get('population', '?')}, "
+        f"{pico.get('intervention', '?')} "
+        f"compared to {pico.get('comparator', '?')} "
+        f"will affect {pico.get('outcome', '?')}."
+    )
+
+    confidence = pico.get("confidence", "medium")
+    if confidence not in ("low", "medium", "high"):
+        confidence = "medium"
+
+    cur.execute("""
+        INSERT INTO hypothesis_seeds (
+            id, gap_id, gap_title,
+            population, intervention, comparator, outcome,
+            hypothesis_text, confidence, status
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        str(uuid.uuid4()),
+        gap_db_id,
+        gap_title,
+        pico.get("population", ""),
+        pico.get("intervention", ""),
+        pico.get("comparator", ""),
+        pico.get("outcome", ""),
+        hypothesis_text,
+        confidence,
+        "seeded",
+    ))
+    conn.commit()
+    cur.close()
+    return hypothesis_text
+
+
+def mark_gap_seeded(conn, gap_db_id):
+    cur = conn.cursor()
+    cur.execute("UPDATE gap_candidates SET status = 'seeded' WHERE id = %s", (gap_db_id,))
+    conn.commit()
+    cur.close()
+
+
+# ─────────────────────────────────────────────
+# AUTOMATIC ENTRY POINT — called from api_server.py
+# right after a search completes. Uses the in-memory
+# gap_cards + id_map from research_gap.py directly —
+# no keyword re-search, no manual run needed.
+# ─────────────────────────────────────────────
+def run_hypothesis_for_search(gap_cards, id_map, research_fronts, topic,
+                                progress_callback=None):
+    """
+    gap_cards: output["gap_cards"] from generate_research_gaps()
+    id_map:    { card_gap_id -> db_uuid } from save_gap_cards_to_db()
+    research_fronts: output["research_fronts"]
+    topic:     the search topic string
+    progress_callback: optional fn(message: str) for live status updates
+    """
     conn = get_conn()
-    # ensure_hypothesis_table(conn)
+    seeded, failed = 0, 0
+    results = []
 
-    # Step 1: fetch qualified gaps
+    total = len(gap_cards)
+    for i, card in enumerate(gap_cards, start=1):
+        gap_db_id = id_map.get(card["gap_id"])
+        if not gap_db_id:
+            failed += 1
+            continue
+
+        title       = card.get("gap_title", "")
+        description = card.get("gap_description", "")
+        novelty     = card.get("novelty_score")
+        feasibility = card.get("feasibility_score")
+        entities    = card.get("related_entities", {})
+        papers      = card.get("papers", [])
+
+        if progress_callback:
+            progress_callback(f"Generating hypothesis {i}/{total}: {title[:50]}...")
+
+        front = find_relevant_front(title, entities, research_fronts)
+
+        pico = generate_pico(
+            title, description, novelty, feasibility,
+            entities, papers, front, topic
+        )
+
+        if pico:
+            hyp_text = save_hypothesis(conn, gap_db_id, title, pico)
+            mark_gap_seeded(conn, gap_db_id)
+            seeded += 1
+            results.append({
+                "gap_title":  title,
+                "hypothesis": hyp_text,
+                "confidence": pico.get("confidence"),
+                "confidence_score": pico.get("confidence_score"),
+            })
+        else:
+            failed += 1
+
+    conn.close()
+    return {"seeded": seeded, "failed": failed, "total": total, "results": results}
+
+
+# ─────────────────────────────────────────────
+# MANUAL / BACKFILL MODE — still works standalone
+# for gaps already in DB with no hypothesis yet.
+# Not required for the automatic flow.
+# ─────────────────────────────────────────────
+def fetch_qualified_gaps(conn):
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT g.id, g.title, g.description, g.related_entities,
+               g.novelty_score, g.feasibility_score, g.topic
+        FROM gap_candidates g
+        WHERE g.novelty_score    >= %s
+          AND g.feasibility_score >= %s
+          AND g.status = 'scored'
+          AND g.id NOT IN (
+              SELECT gap_id FROM hypothesis_seeds WHERE gap_id IS NOT NULL
+          )
+        ORDER BY (g.novelty_score + g.feasibility_score) DESC;
+    """, (NOVELTY_MIN, FEASIBILITY_MIN))
+    rows = cur.fetchall()
+    cur.close()
+
+    gaps = []
+    for row in rows:
+        entities = {}
+        try:
+            entities = json.loads(row[3]) if row[3] else {}
+            if isinstance(entities, list):
+                entities = {"uncategorized": entities}
+        except Exception:
+            pass
+        gaps.append({
+            "id":                str(row[0]),
+            "title":             row[1] or "",
+            "description":       row[2] or "",
+            "related_entities":  entities,
+            "novelty_score":     float(row[4]) if row[4] is not None else None,
+            "feasibility_score": float(row[5]) if row[5] is not None else None,
+            "topic":             row[6] or "",
+        })
+    return gaps
+
+
+def run_hypothesis_seeding():
+    """Manual terminal entry point — backfills gaps with no hypothesis yet."""
+    print("=== RISHI-AI Hypothesis Seeding (manual/backfill mode) ===\n")
+    conn = get_conn()
     gaps = fetch_qualified_gaps(conn)
     print(f"Found {len(gaps)} gap(s) qualifying for hypothesis seeding.\n")
 
     if not gaps:
         print("No gaps meet the threshold yet.")
-        print(f"Run more topics through research_gap.py and scorer.py,")
-        print(f"or lower NOVELTY_MIN/FEASIBILITY_MIN in this file.")
         conn.close()
         return
 
-    # Step 2: generate PICO for each gap
-    seeded  = 0
-    failed  = 0
-    results = []
-
+    seeded, failed = 0, 0
     for i, gap in enumerate(gaps, start=1):
         print(f"[{i}/{len(gaps)}] {gap['title'][:60]}")
-        print(f"  Novelty: {gap['novelty_score']} | "
-              f"Feasibility: {gap['feasibility_score']}")
-
-        # Get supporting papers for context
-        papers = fetch_supporting_papers(conn, gap["title"])
-        print(f"  Supporting papers found: {len(papers)}")
-
-        # Generate PICO
-        pico = generate_pico(gap, papers)
-
+        pico = generate_pico(
+            gap["title"], gap["description"], gap["novelty_score"],
+            gap["feasibility_score"], gap["related_entities"], [], None, gap["topic"]
+        )
         if pico:
-            hypothesis_text = save_hypothesis(conn, gap, pico)
+            save_hypothesis(conn, gap["id"], gap["title"], pico)
             mark_gap_seeded(conn, gap["id"])
             seeded += 1
-
-            results.append({
-                "gap_title":        gap["title"],
-                "novelty_score":    gap["novelty_score"],
-                "feasibility_score": gap["feasibility_score"],
-                "pico":             pico,
-                "hypothesis":       hypothesis_text,
-            })
-
-            print(f"  ✓ P: {pico.get('population', '')[:60]}")
-            print(f"  ✓ I: {pico.get('intervention', '')[:60]}")
-            print(f"  ✓ C: {pico.get('comparator', '')[:60]}")
-            print(f"  ✓ O: {pico.get('outcome', '')[:60]}")
-            print(f"  ✓ Confidence: {pico.get('confidence', '')}")
+            print(f"  ✓ seeded")
         else:
             failed += 1
-            print(f"  ✗ Could not generate PICO for this gap.")
-
-        print()
+            print(f"  ✗ failed")
 
     conn.close()
-
-    # Step 3: save all results to JSON
-    output_path = os.path.join(os.getcwd(), "hypothesis_seeds_output.json")
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
-
-    print("=" * 52)
-    print(f"Done. Seeded: {seeded}, Failed: {failed}")
-    print(f"Results saved to: {output_path}")
-    print("\nNext step: Member 5 can now read hypothesis_seeds table")
-    print("for the Hypothesis Seeds section of the dashboard.")
+    print(f"\nDone. Seeded: {seeded}, Failed: {failed}")
 
 
 if __name__ == "__main__":
