@@ -42,14 +42,23 @@ def find_relevant_front(gap_title, related_entities, research_fronts):
     if not research_fronts:
         return None
 
+    # Defensive: related_entities should be a dict, but guard against
+    # it arriving as something else (set, list, None) from upstream.
+    if not isinstance(related_entities, dict):
+        related_entities = {}
+
     gap_words = set(gap_title.lower().split())
-    for cat_items in (related_entities or {}).values():
-        for item in cat_items:
-            gap_words.update(item.lower().split())
+    for cat_items in related_entities.values():
+        if isinstance(cat_items, (list, set, tuple)):
+            for item in cat_items:
+                gap_words.update(str(item).lower().split())
 
     best_front  = None
     best_score  = 0
     for front in research_fronts:
+        # Defensive: each front should be a dict
+        if not isinstance(front, dict):
+            continue
         front_words = set((front.get("label") or "").lower().split())
         front_words.update((front.get("display_title") or "").lower().split())
         overlap = len(gap_words & front_words)
@@ -57,8 +66,7 @@ def find_relevant_front(gap_title, related_entities, research_fronts):
             best_score = overlap
             best_front = front
 
-    return best_front if best_score > 0 else (research_fronts[0] if research_fronts else None)
-
+    return best_front if best_score > 0 else (research_fronts[0] if research_fronts and isinstance(research_fronts[0], dict) else None)
 
 # ─────────────────────────────────────────────
 # BUILD SUPPORTING EVIDENCE BLOCK
@@ -81,14 +89,13 @@ def build_evidence_block(papers, limit=6):
 
 
 def build_entities_block(related_entities):
-    if not related_entities:
+    if not related_entities or not isinstance(related_entities, dict):
         return "No specific entities extracted."
     lines = []
     for category, items in related_entities.items():
-        if items:
-            lines.append(f"- {category.title()}: {', '.join(items)}")
+        if items and isinstance(items, (list, set, tuple)):
+            lines.append(f"- {category.title()}: {', '.join(str(i) for i in items)}")
     return "\n".join(lines) if lines else "No specific entities extracted."
-
 
 # ─────────────────────────────────────────────
 # PROMPT BUILDER — enriched with gap + papers +

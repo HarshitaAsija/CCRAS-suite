@@ -163,8 +163,15 @@ function TrendChart({ name, trend, color = "#4C72B0" }: {
 // ─────────────────────────────────────────────
 // RESEARCH FRONT CARD — enhanced
 // ─────────────────────────────────────────────
+
+// ─────────────────────────────────────────────
+// RESEARCH FRONT CARD — shows ALL papers + always
+// attempts the trend chart (chart itself handles
+// the "not enough data" case internally)
+// ─────────────────────────────────────────────
 function FrontCard({ front, index }: { front: ResearchFront; index: number }) {
   const [open, setOpen] = useState(false);
+  const [showAllPapers, setShowAllPapers] = useState(false);
   const color = FRONT_COLORS[index % FRONT_COLORS.length];
 
   const yr = front.year_range;
@@ -172,10 +179,14 @@ function FrontCard({ front, index }: { front: ResearchFront; index: number }) {
     front.trend.classification === "emerging" ? C.emerald :
     front.trend.classification === "declining" ? C.scarlet : C.muted;
 
-  // representative papers — use representative_papers if available, else first 5
-  const repPapers = (front.representative_papers?.length
-    ? front.representative_papers
-    : front.papers?.slice(0, 5)) ?? [];
+  // Use the FULL papers list from the front — not the sliced
+  // representative_papers. Backend already returns every paper
+  // in this cluster under front.papers.
+  const allPapers = front.papers ?? [];
+  const visiblePapers = showAllPapers ? allPapers : allPapers.slice(0, 8);
+
+  const hasTrendData = front.trend?.counts_by_year &&
+    Object.keys(front.trend.counts_by_year).length >= 2;
 
   return (
     <div style={{
@@ -193,18 +204,14 @@ function FrontCard({ front, index }: { front: ResearchFront; index: number }) {
       >
         <span style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: color }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Display title (human-readable) */}
           <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.navy, lineHeight: 1.4 }}>
             {front.display_title || front.label}
           </p>
-          {/* Meta */}
           <div style={{ display: "flex", gap: 10, marginTop: 3, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: C.muted }}>
               {front.paper_count} paper{front.paper_count !== 1 ? "s" : ""}
             </span>
-            {yr && (
-              <span style={{ fontSize: 11, color: C.muted }}>{yr[0]}–{yr[1]}</span>
-            )}
+            {yr && <span style={{ fontSize: 11, color: C.muted }}>{yr[0]}–{yr[1]}</span>}
             <span style={{ fontSize: 11, fontWeight: 600, color: classColor }}>
               {front.trend.classification}
             </span>
@@ -214,9 +221,7 @@ function FrontCard({ front, index }: { front: ResearchFront; index: number }) {
           fontSize: 12, color: C.mid, flexShrink: 0,
           transform: open ? "rotate(90deg)" : "none",
           transition: "transform 0.15s",
-        }}>
-          ▶
-        </span>
+        }}>▶</span>
       </button>
 
       {/* Expanded body */}
@@ -258,23 +263,35 @@ function FrontCard({ front, index }: { front: ResearchFront; index: number }) {
             </div>
           )}
 
-          {/* Publication trend chart */}
-          <TrendChart
-            name={`Publication trend — ${front.display_title || front.label}`}
-            trend={front.trend}
-            color={color}
-          />
+          {/* Publication trend chart — always attempted */}
+          {hasTrendData ? (
+            <TrendChart
+              name={`Publication trend — ${front.display_title || front.label}`}
+              trend={front.trend}
+              color={color}
+            />
+          ) : (
+            <div style={{
+              padding: "10px 14px", borderRadius: 8, marginBottom: 14,
+              background: "#fff", border: `1px dashed ${C.border}`,
+              fontSize: 11, color: C.muted, fontStyle: "italic",
+            }}>
+              Not enough papers with known publication years in this cluster
+              to plot a trend ({front.paper_count} paper{front.paper_count !== 1 ? "s" : ""} total,
+              needs at least 2 distinct years).
+            </div>
+          )}
 
-          {/* Representative papers */}
-          {repPapers.length > 0 && (
+          {/* ALL papers in this cluster */}
+          {allPapers.length > 0 && (
             <div>
               <p style={{
                 margin: "0 0 8px", fontSize: 10, fontWeight: 700,
                 color: C.muted, letterSpacing: "0.09em", textTransform: "uppercase",
               }}>
-                Representative papers ({front.paper_count} total)
+                Papers in this cluster ({allPapers.length})
               </p>
-              {repPapers.map((p, i) => (
+              {visiblePapers.map((p, i) => (
                 <div key={p.id || i} style={{
                   fontSize: 12, color: C.navy, padding: "5px 0",
                   borderBottom: `1px solid ${C.border}`, lineHeight: 1.4,
@@ -283,10 +300,19 @@ function FrontCard({ front, index }: { front: ResearchFront; index: number }) {
                   {p.title}
                 </div>
               ))}
-              {front.paper_count > repPapers.length && (
-                <p style={{ margin: "8px 0 0", fontSize: 11, color: C.muted, fontStyle: "italic" }}>
-                  + {front.paper_count - repPapers.length} more papers in this cluster
-                </p>
+
+              {allPapers.length > 8 && (
+                <button
+                  onClick={() => setShowAllPapers(s => !s)}
+                  style={{
+                    marginTop: 10, background: "none", border: "none",
+                    color: C.mid, fontSize: 12, fontWeight: 500, cursor: "pointer", padding: 0,
+                  }}
+                >
+                  {showAllPapers
+                    ? "Show fewer papers ↑"
+                    : `Show all ${allPapers.length} papers ↓`}
+                </button>
               )}
             </div>
           )}
@@ -300,7 +326,6 @@ function FrontCard({ front, index }: { front: ResearchFront; index: number }) {
     </div>
   );
 }
-
 // ─────────────────────────────────────────────
 // SUPPORTING PAPER ROW
 // ─────────────────────────────────────────────
