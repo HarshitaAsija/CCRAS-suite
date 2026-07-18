@@ -54,8 +54,9 @@ DOI_COLUMN_CANDIDATES = ["doi"]
 # Tune BATCH_SIZE to what your laptop handles —
 # 8 is safe for most MacBooks.
 # ─────────────────────────────────────────────
-TOTAL_PAPERS = 80
-BATCH_SIZE   = 8
+TOTAL_PAPERS = 40
+BATCH_SIZE   = 4
+MAX_FETCH_FOR_CLUSTERING = 300
  
 # NEW: how many words of the abstract to keep for the lightweight, non-LLM
 # "papers" summary block (title + link + snippet) added to the output.
@@ -424,8 +425,7 @@ def fetch_papers_batched(topic):
             # so the fetched set is at least consistently the newest papers
             # matching the topic, rather than random.
             order_clause=(
-                sql.SQL("ORDER BY {} DESC NULLS LAST").format(sql.Identifier(year_col))
-                if year_col else sql.SQL("")
+                sql.SQL("ORDER BY RANDOM()")   
             ),
         )
  
@@ -450,6 +450,50 @@ def fetch_papers_batched(topic):
               f"of up to {BATCH_SIZE} papers each.")
         return all_rows, batches
  
+    finally:
+        conn.close()
+
+
+
+def fetch_all_matching_papers(topic, max_fetch=MAX_FETCH_FOR_CLUSTERING):
+    """
+    Fetches up to max_fetch papers matching the topic — no ordering bias,
+    used purely to build an accurate cluster/front picture of the full
+    population before we pick which ones actually go to Ollama.
+    """
+    conn = get_conn()
+    try:
+        year_col, pmid_col, doi_col = detect_paper_columns(conn)
+        search_terms = get_search_terms(topic)
+
+        conditions = " OR ".join(
+            ["(title ILIKE %s OR abstract ILIKE %s)"] * len(search_terms)
+        )
+        query = sql.SQL("""
+            SELECT id, title, abstract, {year_col}, {pmid_col}, {doi_col}
+            FROM papers
+            WHERE {conditions}
+            LIMIT %s;
+        """).format(
+            year_col=sql.Identifier(year_col) if year_col else sql.SQL("NULL"),
+            pmid_col=sql.Identifier(pmid_col) if pmid_col else sql.SQL("NULL"),
+            doi_col=sql.Identifier(doi_col) if doi_col else sql.SQL("NULL"),
+            conditions=sql.SQL(conditions),
+        )
+
+        params = []
+        for term in search_terms:
+            params.extend([f"%{term}%", f"%{term}%"])
+        params.append(max_fetch)
+
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        cursor.close()
+
+        print(f"  Fetched {len(rows)} papers for clustering "
+              f"(cap: {max_fetch}).")
+        return rows
     finally:
         conn.close()
  
@@ -523,8 +567,7 @@ def fetch_papers(topic, limit=BATCH_SIZE):
             doi_col=sql.Identifier(doi_col) if doi_col else sql.SQL("NULL"),
             conditions=sql.SQL(conditions),
             order_clause=(
-                sql.SQL("ORDER BY {} DESC NULLS LAST").format(sql.Identifier(year_col))
-                if year_col else sql.SQL("")
+                sql.SQL("ORDER BY RANDOM()")   # was: ORDER BY {year_col} DESC NULLS LAST
             ),
         )
         params = []
@@ -676,7 +719,7 @@ def call_ollama(prompt):
             "format": "json",
             "options": {
                 "temperature": 0.2,
-                "num_predict": 900,
+                "num_predict": 2500,
                 "num_ctx":     4096,
             },
         },
@@ -974,6 +1017,51 @@ def build_research_fronts(paper_embedding_pairs, topic=None, k=None):
     fronts.sort(key=lambda f: f["paper_count"], reverse=True)
     return fronts
  
+
+
+
+def stratified_sample(paper_embedding_pairs, assignments, target_n):
+    """
+    Picks `target_n` papers total, proportionally spread across every
+    cluster in `assignments`, so no research direction gets zero
+    representation just from bad luck — unlike pure random sampling.
+
+    Small clusters still get at least 1 paper if target_n allows it.
+    """
+    from collections import defaultdict
+    import random as _random
+
+    clusters = defaultdict(list)
+    for i, cluster_id in enumerate(assignments):
+        clusters[cluster_id].append(i)
+
+    n_clusters = len(clusters)
+    if n_clusters == 0:
+        return []
+
+    total_papers = len(assignments)
+    sampled_indices = []
+
+    # First pass: proportional allocation per cluster, minimum 1 each
+    remaining = target_n
+    for cluster_id, indices in clusters.items():
+        share = max(1, round(target_n * len(indices) / total_papers))
+        share = min(share, len(indices), remaining)
+        chosen = _random.sample(indices, share)
+        sampled_indices.extend(chosen)
+        remaining -= share
+        if remaining <= 0:
+            break
+
+    # If we're short (rounding), fill from largest unused clusters
+    if remaining > 0:
+        used = set(sampled_indices)
+        leftover = [i for i in range(total_papers) if i not in used]
+        _random.shuffle(leftover)
+        sampled_indices.extend(leftover[:remaining])
+
+    sampled_indices = sampled_indices[:target_n]
+    return [paper_embedding_pairs[i][0] for i in sampled_indices]  # return raw rows
  
 # -------------------------
 # NEW: human-readable front titles/summaries.
@@ -1337,63 +1425,59 @@ def generate_research_gaps(topic, progress_callback=None):
 
     pipeline = []
 
-    # --- Step 1: fetch matching papers (with synonym expansion) + batch them ---
-    report("Fetching papers from database...")
+    # --- Step 1: fetch a LARGE pool for accurate clustering (cheap) ---
+    report("Fetching full paper population for clustering...")
     t0 = time.time()
-    all_rows, batches = fetch_papers_batched(topic)
+    all_matching_rows = fetch_all_matching_papers(topic)
     _pipeline_step(
-        pipeline, "fetch_and_batch_papers", t0,
-        status="ok" if all_rows else "empty",
-        papers_found=len(all_rows),
-        total_papers_cap=TOTAL_PAPERS,
-        batch_size=BATCH_SIZE,
-        total_batches=len(batches),
+        pipeline, "fetch_full_population", t0,
+        status="ok" if all_matching_rows else "empty",
+        papers_found=len(all_matching_rows),
+        max_fetch_cap=MAX_FETCH_FOR_CLUSTERING,
     )
 
-    if not all_rows:
+    if not all_matching_rows:
         print(f"\nNo papers found for '{topic}'.")
         return {
             "error": f"No papers found for topic '{topic}'",
             "pipeline": pipeline,
         }, []
 
-    paper_ids           = [row[0] for row in all_rows]
-    years               = [
-        y for y in (_extract_year(row[3]) for row in all_rows) if y
-    ]
-    last_published_year = max(years) if years else None
-
-    papers_summary = build_papers_summary(all_rows)
-    paper_links = build_paper_id_links(all_rows)
-
     ensure_ollama_model(OLLAMA_EMBED_MODEL)
 
-    report(f"Computing embeddings for {len(all_rows)} papers...")
-    print("\nComputing paper embeddings...")
+    # --- Step 2: embed the FULL pool (cheap — no Ollama generate calls) ---
+    report(f"Computing embeddings for {len(all_matching_rows)} papers...")
+    print("\nComputing paper embeddings for full population...")
     t0 = time.time()
-    paper_texts = [
+    all_texts = [
         f"Title: {r[1] or ''}\nAbstract:\n{r[2] or ''}"
-        for r in all_rows
+        for r in all_matching_rows
     ]
-    paper_embedding_pairs = []
-    for row, text in zip(all_rows, paper_texts):
+    full_embedding_pairs = []
+    for row, text in zip(all_matching_rows, all_texts):
         emb = get_embedding(text)
         if emb:
-            paper_embedding_pairs.append((row, emb))
+            full_embedding_pairs.append((row, emb))
 
-    paper_embeddings = [e for _, e in paper_embedding_pairs]
     _pipeline_step(
-        pipeline, "embed_papers", t0,
-        status="ok" if paper_embeddings else "no_embeddings",
-        embedded=len(paper_embeddings),
-        attempted=len(all_rows),
+        pipeline, "embed_full_population", t0,
+        status="ok" if full_embedding_pairs else "no_embeddings",
+        embedded=len(full_embedding_pairs),
+        attempted=len(all_matching_rows),
     )
     print(f"Embeddings done in {time.time() - t0:.1f}s")
 
-    report("Clustering papers into research fronts...")
+    if not full_embedding_pairs:
+        return {
+            "error": "Could not compute embeddings — is Ollama running?",
+            "pipeline": pipeline,
+        }, []
+
+    # --- Step 3: cluster the FULL population (accurate fronts/trends) ---
+    report("Clustering full population into research fronts...")
     t0 = time.time()
     all_matching_years = fetch_all_years_for_topic(topic)
-    research_fronts = build_research_fronts(paper_embedding_pairs, topic=topic)
+    research_fronts = build_research_fronts(full_embedding_pairs, topic=topic)
 
     report(f"Labeling {len(research_fronts)} research front(s)...")
     add_front_display_info(research_fronts)
@@ -1403,221 +1487,54 @@ def generate_research_gaps(topic, progress_callback=None):
         status="ok" if research_fronts else "no_clusters",
         fronts_found=len(research_fronts),
         total_matching_papers=len(all_matching_years),
-        papers_used_for_fronts=len(paper_embedding_pairs),
+        papers_used_for_fronts=len(full_embedding_pairs),
     )
 
-    all_gap_cards     = []
-    all_limitations   = []
-    all_opportunities = []
-    all_future        = []
-    batches_succeeded = 0
+    # --- Step 4: STRATIFIED SAMPLE — pick TOTAL_PAPERS spread across
+    # every cluster found above, instead of pure random selection.
+    # This guarantees every research direction found in the full
+    # population gets representation in what Ollama actually sees.
+    report(f"Selecting {TOTAL_PAPERS} representative papers across "
+           f"{len(research_fronts)} research fronts...")
 
-    # --- Step: MAP — one LLM call per batch ---
-    t_map_start = time.time()
-    for batch_num, batch_rows in enumerate(batches, start=1):
-        # Report ONCE per batch, before retries — retries inside this
-        # batch don't advance the counter, so the frontend correctly
-        # shows "batch 3/10" the whole time batch 3 is retrying instead
-        # of jumping to fake batch numbers 11+.
-        report(f"Analysing batch {batch_num}/{len(batches)} with Ollama (~1 min per batch)...")
-        print(f"\n--- Batch {batch_num}/{len(batches)} "
-              f"({len(batch_rows)} papers) ---")
+    vectors = [e for _, e in full_embedding_pairs]
+    k = max(2, min(6, len(vectors) // 10)) if len(vectors) >= 12 else max(1, len(vectors) // 4 or 1)
+    assignments = kmeans(vectors, k)
 
-        batch_paper_refs = []
-        for row in batch_rows:
-            pid, title, abstract, year_raw, pmid, doi = row
-            batch_paper_refs.append({
-                "id":      str(pid),
-                "pmid":    f"PMID:{pmid}" if pmid else None,
-                "doi":     doi,
-                "title":   title or "",
-                "year":    _extract_year(year_raw),
-                "link":    build_paper_link(pid, pmid, doi),
-                "summary": _abstract_snippet(abstract),
-            })
+    sampled_rows = stratified_sample(full_embedding_pairs, assignments, TOTAL_PAPERS)
 
-        batch_text = "\n\n".join(
-            f"Title: {r[1] or ''}\nAbstract:\n{r[2] or ''}"
-            for r in batch_rows
-        )
-        prompt = build_prompt(batch_text)
-        result = None
-        raw    = ""
+    all_rows = sampled_rows
+    paper_ids = [row[0] for row in all_rows]
+    years = [y for y in (_extract_year(row[3]) for row in all_rows) if y]
+    last_published_year = max(years) if years else None
 
-        for attempt in range(1, 4):
-            print(f"  Calling Ollama (attempt {attempt}/3)...")
-            call_start = time.time()
-            try:
-                data = call_ollama(prompt)
-            except requests.Timeout:
-                print(f"  Timeout on attempt {attempt}, retrying...")
-                continue
-            except requests.RequestException as e:
-                print(f"  Could not reach Ollama: {e}")
-                break
+    papers_summary = build_papers_summary(all_rows)
+    paper_links = build_paper_id_links(all_rows)
 
-            print(f"  Responded in {time.time() - call_start:.1f}s")
-            raw       = data.get("response", "")
-            candidate = safe_parse_json(raw)
+    # Re-embed only the sampled subset for cluster_distance calc
+    # (avoids re-fetching — reuse embeddings already computed above)
+    sampled_ids = {str(r[0]) for r in all_rows}
+    paper_embedding_pairs = [
+        (row, emb) for row, emb in full_embedding_pairs
+        if str(row[0]) in sampled_ids
+    ]
+    paper_embeddings = [e for _, e in paper_embedding_pairs]
 
-            if candidate is not None and is_valid_result(candidate):
-                result = candidate
-                break
-            print(f"  Attempt {attempt}: invalid schema, retrying...")
-
-        if result is None:
-            print(f"  Batch {batch_num}: skipped.")
-            continue
-
-        batches_succeeded += 1
-        batch_gaps = result.get("research_gaps", [])
-        for gap in batch_gaps:
-            description = gap.get("description", "")
-
-            novelty = gap.get("novelty_score")
-            feasibility = gap.get("feasibility_score")
-            novelty = novelty if isinstance(novelty, (int, float)) else None
-            feasibility = feasibility if isinstance(feasibility, (int, float)) else None
-            overall_score = (
-                round((novelty + feasibility) / 2, 1)
-                if novelty is not None and feasibility is not None
-                else None
-            )
-
-            raw_entities = gap.get("related_entities", {})
-            if isinstance(raw_entities, list):
-                related_entities = {"uncategorized": raw_entities} if raw_entities else {}
-            elif isinstance(raw_entities, dict):
-                related_entities = {k: v for k, v in raw_entities.items() if v}
-            else:
-                related_entities = {}
-
-            matched_papers = []
-            for evidence_item in gap.get("supporting_evidence", []) or []:
-                matched = match_paper_by_title(
-                    evidence_item.get("paper_title", ""), batch_paper_refs
-                )
-                if not matched:
-                    continue
-                matched_papers.append({
-                    "paper_id":              matched["id"],
-                    "title":                 matched["title"],
-                    "doi":                   matched["doi"],
-                    "year":                  matched["year"],
-                    "paper_url":             matched["link"],
-                    "gap_specific_abstract": evidence_item.get("gap_specific_abstract", ""),
-                })
-
-            most_recent_year = max(
-                (p["year"] for p in matched_papers if p.get("year")),
-                default=None,
-            )
-
-            all_gap_cards.append({
-                "gap_id":                  "GAP-" + str(uuid.uuid4())[:8],
-                "topic":                   topic,
-                "gap_title":               (gap.get("title") or "Untitled")[:70],
-                "gap_description":         description,
-                "related_entities":        related_entities,
-                "novelty_score":           novelty,
-                "feasibility_score":       feasibility,
-                "overall_score":           overall_score,
-                "papers":                  matched_papers,
-                "supporting_paper_count":  len(matched_papers),
-                "most_recent_year":        most_recent_year,
-                "_batch_num":              batch_num,
-            })
-
-        all_limitations.extend(result.get("common_limitations", []))
-        all_opportunities.extend(result.get("unexplored_opportunities", []))
-        all_future.extend(result.get("future_directions", []))
-        print(f"  Batch {batch_num}: {len(batch_gaps)} gap(s) found.")
-
+    batches = [
+        all_rows[i: i + BATCH_SIZE]
+        for i in range(0, len(all_rows), BATCH_SIZE)
+    ]
     _pipeline_step(
-        pipeline, "map_batches", t_map_start,
-        status="ok" if batches_succeeded else "failed",
-        batches_succeeded=batches_succeeded,
-        batches_total=len(batches),
-    )
-
-    if not all_gap_cards:
-        return {
-            "error": "No gaps found across all batches.",
-            "pipeline": pipeline,
-            "papers": papers_summary,
-            "paper_links": paper_links,
-            "research_fronts": research_fronts,
-            "overall_trend": overall_trend,
-        }, paper_ids
-
-    report("Deduplicating gaps across batches...")
-    t0 = time.time()
-    seen_titles = set()
-    unique_gaps = []
-    for card in all_gap_cards:
-        key = card["gap_title"].lower()[:40]
-        if key not in seen_titles:
-            seen_titles.add(key)
-            unique_gaps.append(card)
-
-    generated_at_iso = datetime.now(timezone.utc).isoformat()
-    for idx, card in enumerate(unique_gaps, start=1):
-        card["gap_id"] = f"gap_{idx:03d}"
-        card["generation"] = {
-            "cluster_id":     card.pop("_batch_num", None),
-            "generated_from": card.get("supporting_paper_count", 0),
-            "llm_model":      OLLAMA_MODEL,
-            "created_at":     generated_at_iso,
-        }
-
-    _pipeline_step(
-        pipeline, "dedup_gaps", t0,
+        pipeline, "stratified_sample_and_batch", time.time(),
         status="ok",
-        gaps_before_dedup=len(all_gap_cards),
-        gaps_after_dedup=len(unique_gaps),
+        sampled_papers=len(all_rows),
+        clusters_used=len(set(assignments)),
+        batch_size=BATCH_SIZE,
+        total_batches=len(batches),
     )
-
-    print(f"\nTotal: {len(all_gap_cards)} gaps → {len(unique_gaps)} after dedup.")
-
-    def _sort_key(field, reverse_none_last=True):
-        def key(card):
-            val = card.get(field)
-            if val is None:
-                return (1, 0)
-            return (0, -val if reverse_none_last else val)
-        return key
-
-    gap_sort_orders = {
-        "novelty":            [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("novelty_score"))],
-        "feasibility":        [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("feasibility_score"))],
-        "supporting_papers":  [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("supporting_paper_count"))],
-        "most_recent":        [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("most_recent_year"))],
-        "overall_score":      [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("overall_score"))],
-    }
-
-    report(f"Done — {len(unique_gaps)} gaps identified.")
-
-    output = {
-        "topic":              topic,
-        "generated_at":       datetime.now(timezone.utc).isoformat(),
-        "papers_scanned":     len(all_rows),
-        "batches_processed":  f"{batches_succeeded}/{len(batches)}",
-        "papers":             papers_summary,
-        "paper_links":        paper_links,
-        "pipeline":           pipeline,
-        "research_fronts":    research_fronts,
-        "overall_trend":      overall_trend,
-        "gap_sort_orders":    gap_sort_orders,
-        "summary": {
-            "research_gaps":            [g["gap_description"] for g in unique_gaps],
-            "common_limitations":       list(dict.fromkeys(all_limitations)),
-            "unexplored_opportunities": list(dict.fromkeys(all_opportunities)),
-            "future_directions":        list(dict.fromkeys(all_future)),
-        },
-        "gap_cards": unique_gaps,
-    }
-    return output, paper_ids 
- 
+    print(f"  Stratified sample: {len(all_rows)} papers across "
+          f"{len(set(assignments))} clusters → {len(batches)} batches")
+           
 # -------------------------
 # Output helpers
 # -------------------------
