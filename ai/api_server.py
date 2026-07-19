@@ -334,15 +334,24 @@ def start_search(body: dict):
 
 
 def _run_pipeline(job_id: str, topic: str):
-    import sys, os
+    import sys, os, traceback
     sys.path.insert(0, os.path.dirname(__file__))
     try:
+        _jobs[job_id]["message"] = "Fetching papers from database..."
         from research_gap import generate_research_gaps, save_gap_cards_to_db
+        import research_gap as rg
 
-        def progress_callback(msg):
-            _jobs[job_id]["message"] = msg
+        original_call = rg.call_ollama
+        batch_n = {"n": 0}
 
-        result, paper_ids = generate_research_gaps(topic, progress_callback=progress_callback)
+        def _progress(prompt):
+            batch_n["n"] += 1
+            _jobs[job_id]["message"] = f"Analysing batch {batch_n['n']} with Ollama..."
+            return original_call(prompt)
+
+        rg.call_ollama = _progress
+        result, paper_ids = generate_research_gaps(topic, progress_callback=lambda m: _jobs[job_id].update({"message": m}))
+        rg.call_ollama = original_call
 
         if "error" in result:
             _jobs[job_id]["status"] = "error"
@@ -353,40 +362,34 @@ def _run_pipeline(job_id: str, topic: str):
         _jobs[job_id]["message"] = f"Saving {n_gaps} gaps to database..."
         id_map = save_gap_cards_to_db(result, paper_ids)
 
-        # Scores already computed by the LLM per-gap in research_gap.py —
-        # no separate scorer.py pass needed anymore.
-
         _jobs[job_id]["research_fronts"] = result.get("research_fronts", [])
         _jobs[job_id]["overall_trend"]   = result.get("overall_trend", {})
 
-        # Automatic hypothesis generation — uses the in-memory gap_cards
-        # directly, no manual terminal run required.
         from hypothesis import run_hypothesis_for_search
-
-        def hyp_progress(msg):
-            _jobs[job_id]["message"] = msg
-
         hyp_result = run_hypothesis_for_search(
             gap_cards=result.get("gap_cards", []),
             id_map=id_map,
             research_fronts=result.get("research_fronts", []),
             topic=topic,
-            progress_callback=hyp_progress,
+            progress_callback=lambda m: _jobs[job_id].update({"message": m}),
         )
 
         gaps = _fetch_gaps_for_topic(topic)
         _jobs[job_id]["status"]  = "done"
         _jobs[job_id]["message"] = (
-            f"Done — {len(gaps)} gaps, "
-            f"{hyp_result['seeded']} hypotheses generated for '{topic}'"
+            f"Done — {len(gaps)} gaps, {hyp_result['seeded']} hypotheses for '{topic}'"
         )
         _jobs[job_id]["gaps"] = gaps
 
     except Exception as e:
+        # THIS IS THE KEY CHANGE — capture the exact file+line, not just
+        # the exception message, so we fix the real bug on the first try.
+        tb = traceback.format_exc()
+        print(tb)   # full traceback in your terminal/server logs
         _jobs[job_id]["status"] = "error"
-        _jobs[job_id]["error"]  = str(e)
+        _jobs[job_id]["error"]  = tb   # full traceback shown in frontend too
 
-
+        
 def _fetch_gaps_for_topic(topic: str) -> list:
     conn = get_conn(); cur = conn.cursor()
     try:
