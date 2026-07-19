@@ -118,7 +118,7 @@ def _supporting_papers(cur, source_ids):
 def _shape_gap(row, cur):
     n = float(row["novelty_score"])     if row.get("novelty_score")     is not None else None
     f = float(row["feasibility_score"]) if row.get("feasibility_score") is not None else None
-    overall = round((n + f) / 2, 1) if n is not None and f is not None else None
+    # overall = round((n + f) / 2, 1) if n is not None and f is not None else None
 
     # Prefer the rich, gap-specific detail saved at generation time
     detail = row.get("supporting_papers_detail")
@@ -152,7 +152,7 @@ def _shape_gap(row, cur):
         "description":       row.get("description") or "",
         "novelty_score":     round(n, 1) if n is not None else None,
         "feasibility_score": round(f, 1) if f is not None else None,
-        "overall_score":     overall,
+        # "overall_score":     overall,
         "study_count":       row.get("study_count") or 0,
         "last_published_year": row.get("last_published_year"),
         "status":            row.get("status") or "scored",

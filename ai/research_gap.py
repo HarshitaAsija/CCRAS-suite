@@ -856,7 +856,45 @@ def compute_cluster_distance(gap_text, paper_embeddings):
         return None
     return round(1 - sim, 4)
  
- 
+def expand_supporting_papers(gap_title, gap_description, matched_papers,paper_embedding_pairs, max_total=8,min_similarity=0.35):
+    """
+    Expands beyond the LLM's explicit citations by finding other
+    semantically similar papers from the sampled pool — no extra
+    Ollama calls, uses embeddings already computed.
+    """
+    existing_ids = {p["paper_id"] for p in matched_papers}
+
+    gap_emb = get_embedding(f"{gap_title}\n{gap_description}")
+    if not gap_emb:
+        return matched_papers
+
+    scored = []
+    for row, emb in paper_embedding_pairs:
+        pid = str(row[0])
+        if pid in existing_ids:
+            continue
+        sim = cosine_similarity(gap_emb, emb)
+        if sim and sim >= min_similarity:
+            scored.append((sim, row))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    slots_left = max_total - len(matched_papers)
+
+    for sim, row in scored[:slots_left]:
+        pid, title, abstract, year_raw, pmid, doi = row
+        matched_papers.append({
+            "paper_id":              str(pid),
+            "title":                 title or "Untitled",
+            "doi":                   doi,
+            "year":                  _extract_year(year_raw),
+            "paper_url":             build_paper_link(pid, pmid, doi),
+            "gap_specific_abstract": (
+                f"Thematically related (similarity {sim:.2f}) — "
+                f"{_abstract_snippet(abstract, 35)}"
+            ),
+        })
+
+    return matched_papers
 # -------------------------
 # NEW: Research-front mapping (k-means clustering) + trend detection.
 # Pure Python, no numpy/sklearn -- fine at this scale (tens of papers per
@@ -1366,6 +1404,33 @@ def safe_parse_json(raw):
         return None
  
  
+def differentiate_scores(unique_gaps):
+    """
+    Mistral often gives identical round scores across gaps.
+    This nudges tied scores apart based on relative rank, staying
+    close to the LLM's original assessment while making the list
+    scannable/distinguishable.
+    """
+    n = len(unique_gaps)
+    if n <= 1:
+        return
+
+    def rank_spread(vals):
+        order = sorted(range(n), key=lambda i: (vals[i], i))
+        ranks = [0.0] * n
+        for rank, i in enumerate(order):
+            ranks[i] = rank / (n - 1)
+        return ranks
+
+    novelty_vals = [g.get("novelty_score") or 0 for g in unique_gaps]
+    feas_vals    = [g.get("feasibility_score") or 0 for g in unique_gaps]
+    n_ranks = rank_spread(novelty_vals)
+    f_ranks = rank_spread(feas_vals)
+
+    for i, g in enumerate(unique_gaps):
+        g["novelty_score"]     = round(min(10, max(0, novelty_vals[i] + (n_ranks[i] - 0.5) * 1.5)), 1)
+        g["feasibility_score"] = round(min(10, max(0, feas_vals[i]    + (f_ranks[i] - 0.5) * 1.5)), 1)
+
 # -------------------------
 # NEW: match an LLM-cited "paper_title" back to the real paper row it's
 # fetched from. We never trust the LLM to generate correct doi/year/link
@@ -1619,11 +1684,11 @@ def generate_research_gaps(topic, progress_callback=None):
             feasibility = gap.get("feasibility_score")
             novelty = novelty if isinstance(novelty, (int, float)) else None
             feasibility = feasibility if isinstance(feasibility, (int, float)) else None
-            overall_score = (
-                round((novelty + feasibility) / 2, 1)
-                if novelty is not None and feasibility is not None
-                else None
-            )
+            # overall_score = (
+            #     round((novelty + feasibility) / 2, 1)
+            #     if novelty is not None and feasibility is not None
+            #     else None
+            # )
 
             raw_entities = gap.get("related_entities", {})
             if isinstance(raw_entities, list):
@@ -1646,6 +1711,10 @@ def generate_research_gaps(topic, progress_callback=None):
                         "gap_specific_abstract": evidence_item.get("gap_specific_abstract", ""),
                     })
 
+            matched_papers = expand_supporting_papers(
+                gap.get("title", ""), description, matched_papers, paper_embedding_pairs
+            )
+
             if not matched_papers:
                 matched_papers = [{
                     "paper_id":              p["id"],
@@ -1653,7 +1722,7 @@ def generate_research_gaps(topic, progress_callback=None):
                     "doi":                   p["doi"],
                     "year":                  p["year"],
                     "paper_url":             p["link"],
-                    "gap_specific_abstract": "General context paper from this analysis batch (specific citation not provided by the model).",
+                    "gap_specific_abstract": "General context paper from this analysis batch.",
                 } for p in batch_paper_refs[:3]]
 
             most_recent_year = max(
@@ -1669,7 +1738,7 @@ def generate_research_gaps(topic, progress_callback=None):
                 "related_entities":        related_entities,
                 "novelty_score":           novelty,
                 "feasibility_score":       feasibility,
-                "overall_score":           overall_score,
+                # "overall_score":           overall_score,
                 "papers":                  matched_papers,
                 "supporting_paper_count":  len(matched_papers),
                 "most_recent_year":        most_recent_year,
@@ -1726,6 +1795,7 @@ def generate_research_gaps(topic, progress_callback=None):
     )
 
     print(f"\nTotal: {len(all_gap_cards)} gaps → {len(unique_gaps)} after dedup.")
+    differentiate_scores(unique_gaps)
 
     def _sort_key(field, reverse_none_last=True):
         def key(card):
@@ -1740,7 +1810,7 @@ def generate_research_gaps(topic, progress_callback=None):
         "feasibility":        [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("feasibility_score"))],
         "supporting_papers":  [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("supporting_paper_count"))],
         "most_recent":        [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("most_recent_year"))],
-        "overall_score":      [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("overall_score"))],
+        # "overall_score":      [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("overall_score"))],
     }
 
     report(f"Done — {len(unique_gaps)} gaps identified.")
