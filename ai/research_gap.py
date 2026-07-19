@@ -1534,6 +1534,237 @@ def generate_research_gaps(topic, progress_callback=None):
     )
     print(f"  Stratified sample: {len(all_rows)} papers across "
           f"{len(set(assignments))} clusters → {len(batches)} batches")
+
+    all_gap_cards     = []
+    all_limitations   = []
+    all_opportunities = []
+    all_future        = []
+    batches_succeeded = 0
+
+    # --- Step: MAP — one LLM call per batch ---
+    t_map_start = time.time()
+    for batch_num, batch_rows in enumerate(batches, start=1):
+        report(f"Analysing batch {batch_num}/{len(batches)} with Ollama...")
+        print(f"\n--- Batch {batch_num}/{len(batches)} "
+              f"({len(batch_rows)} papers) ---")
+
+        batch_paper_refs = []
+        for row in batch_rows:
+            pid, title, abstract, year_raw, pmid, doi = row
+            batch_paper_refs.append({
+                "id":      str(pid),
+                "pmid":    f"PMID:{pmid}" if pmid else None,
+                "doi":     doi,
+                "title":   title or "",
+                "year":    _extract_year(year_raw),
+                "link":    build_paper_link(pid, pmid, doi),
+                "summary": _abstract_snippet(abstract),
+            })
+
+        batch_text = "\n\n".join(
+            f"Title: {r[1] or ''}\nAbstract:\n{r[2] or ''}"
+            for r in batch_rows
+        )
+        prompt = build_prompt(batch_text)
+
+        result = None
+        connection_retries = 0
+        max_connection_retries = 2
+
+        while connection_retries <= max_connection_retries:
+            for attempt in range(1, 4):
+                print(f"  Calling Ollama (attempt {attempt}/3)...")
+                call_start = time.time()
+                try:
+                    data = call_ollama(prompt)
+                except (requests.Timeout, requests.exceptions.ConnectionError) as e:
+                    print(f"  Connection issue on attempt {attempt}: {e}")
+                    time.sleep(15)
+                    continue
+                except requests.RequestException as e:
+                    print(f"  Could not reach Ollama: {e}")
+                    break
+
+                print(f"  Responded in {time.time() - call_start:.1f}s")
+                raw       = data.get("response", "")
+                candidate = safe_parse_json(raw)
+
+                if candidate is not None and is_valid_result(candidate):
+                    result = candidate
+                    break
+                print(f"  Attempt {attempt}: invalid schema, retrying...")
+                print(f"  Response length: {len(raw)} chars")
+                print(f"  Last 200 chars: ...{raw[-200:]}")
+
+            if result is not None:
+                break
+
+            connection_retries += 1
+            if connection_retries <= max_connection_retries:
+                print(f"  Batch {batch_num} failed all attempts, waiting 20s "
+                      f"before full retry ({connection_retries}/{max_connection_retries})...")
+                time.sleep(20)
+
+        if result is None:
+            print(f"  Batch {batch_num}: skipped after all retries.")
+            continue
+
+        batches_succeeded += 1
+        batch_gaps = result.get("research_gaps", [])
+
+        for gap in batch_gaps:
+            description = gap.get("description", "")
+
+            novelty = gap.get("novelty_score")
+            feasibility = gap.get("feasibility_score")
+            novelty = novelty if isinstance(novelty, (int, float)) else None
+            feasibility = feasibility if isinstance(feasibility, (int, float)) else None
+            overall_score = (
+                round((novelty + feasibility) / 2, 1)
+                if novelty is not None and feasibility is not None
+                else None
+            )
+
+            raw_entities = gap.get("related_entities", {})
+            if isinstance(raw_entities, list):
+                related_entities = {"uncategorized": raw_entities} if raw_entities else {}
+            elif isinstance(raw_entities, dict):
+                related_entities = {k: v for k, v in raw_entities.items() if v}
+            else:
+                related_entities = {}
+
+            matched_papers = []
+            for evidence_item in gap.get("supporting_evidence", []) or []:
+                matched = match_paper_by_title(evidence_item.get("paper_title", ""), batch_paper_refs)
+                if matched:
+                    matched_papers.append({
+                        "paper_id":              matched["id"],
+                        "title":                 matched["title"],
+                        "doi":                   matched["doi"],
+                        "year":                  matched["year"],
+                        "paper_url":             matched["link"],
+                        "gap_specific_abstract": evidence_item.get("gap_specific_abstract", ""),
+                    })
+
+            if not matched_papers:
+                matched_papers = [{
+                    "paper_id":              p["id"],
+                    "title":                 p["title"],
+                    "doi":                   p["doi"],
+                    "year":                  p["year"],
+                    "paper_url":             p["link"],
+                    "gap_specific_abstract": "General context paper from this analysis batch (specific citation not provided by the model).",
+                } for p in batch_paper_refs[:3]]
+
+            most_recent_year = max(
+                (p["year"] for p in matched_papers if p.get("year")),
+                default=None,
+            )
+
+            all_gap_cards.append({
+                "gap_id":                  "GAP-" + str(uuid.uuid4())[:8],
+                "topic":                   topic,
+                "gap_title":               (gap.get("title") or "Untitled")[:70],
+                "gap_description":         description,
+                "related_entities":        related_entities,
+                "novelty_score":           novelty,
+                "feasibility_score":       feasibility,
+                "overall_score":           overall_score,
+                "papers":                  matched_papers,
+                "supporting_paper_count":  len(matched_papers),
+                "most_recent_year":        most_recent_year,
+                "_batch_num":              batch_num,
+            })
+
+        all_limitations.extend(result.get("common_limitations", []))
+        all_opportunities.extend(result.get("unexplored_opportunities", []))
+        all_future.extend(result.get("future_directions", []))
+        print(f"  Batch {batch_num}: {len(batch_gaps)} gap(s) found.")
+
+    _pipeline_step(
+        pipeline, "map_batches", t_map_start,
+        status="ok" if batches_succeeded else "failed",
+        batches_succeeded=batches_succeeded,
+        batches_total=len(batches),
+    )
+
+    if not all_gap_cards:
+        return {
+            "error": "No gaps found across all batches.",
+            "pipeline": pipeline,
+            "papers": papers_summary,
+            "paper_links": paper_links,
+            "research_fronts": research_fronts,
+            "overall_trend": overall_trend,
+        }, paper_ids
+
+    report("Deduplicating gaps across batches...")
+    t0 = time.time()
+    seen_titles = set()
+    unique_gaps = []
+    for card in all_gap_cards:
+        key = card["gap_title"].lower()[:40]
+        if key not in seen_titles:
+            seen_titles.add(key)
+            unique_gaps.append(card)
+
+    generated_at_iso = datetime.now(timezone.utc).isoformat()
+    for idx, card in enumerate(unique_gaps, start=1):
+        card["gap_id"] = f"gap_{idx:03d}"
+        card["generation"] = {
+            "cluster_id":     card.pop("_batch_num", None),
+            "generated_from": card.get("supporting_paper_count", 0),
+            "llm_model":      OLLAMA_MODEL,
+            "created_at":     generated_at_iso,
+        }
+
+    _pipeline_step(
+        pipeline, "dedup_gaps", t0,
+        status="ok",
+        gaps_before_dedup=len(all_gap_cards),
+        gaps_after_dedup=len(unique_gaps),
+    )
+
+    print(f"\nTotal: {len(all_gap_cards)} gaps → {len(unique_gaps)} after dedup.")
+
+    def _sort_key(field, reverse_none_last=True):
+        def key(card):
+            val = card.get(field)
+            if val is None:
+                return (1, 0)
+            return (0, -val if reverse_none_last else val)
+        return key
+
+    gap_sort_orders = {
+        "novelty":            [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("novelty_score"))],
+        "feasibility":        [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("feasibility_score"))],
+        "supporting_papers":  [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("supporting_paper_count"))],
+        "most_recent":        [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("most_recent_year"))],
+        "overall_score":      [c["gap_id"] for c in sorted(unique_gaps, key=_sort_key("overall_score"))],
+    }
+
+    report(f"Done — {len(unique_gaps)} gaps identified.")
+
+    output = {
+        "topic":              topic,
+        "generated_at":       datetime.now(timezone.utc).isoformat(),
+        "papers_scanned":     len(all_rows),
+        "batches_processed":  f"{batches_succeeded}/{len(batches)}",
+        "papers":             papers_summary,
+        "paper_links":        paper_links,
+        "pipeline":           pipeline,
+        "research_fronts":    research_fronts,
+        "overall_trend":      overall_trend,
+        "gap_sort_orders":    gap_sort_orders,
+        "summary": {
+            "research_gaps":            [g["gap_description"] for g in unique_gaps],
+            "common_limitations":       list(dict.fromkeys(all_limitations)),
+            "unexplored_opportunities": list(dict.fromkeys(all_opportunities)),
+            "future_directions":        list(dict.fromkeys(all_future)),
+        },
+        "gap_cards": unique_gaps,
+    }
+    return output, paper_ids
            
 # -------------------------
 # Output helpers
