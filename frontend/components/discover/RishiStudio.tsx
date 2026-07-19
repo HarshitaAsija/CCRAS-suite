@@ -55,7 +55,7 @@ const FRONT_COLORS = ["#4C72B0","#55A868","#C44E52","#8172B2","#937860","#DA8BC3
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "novelty",           label: "Highest Novelty" },
   { value: "feasibility",       label: "Highest Feasibility" },
-  { value: "overall",           label: "Highest Overall Score" },
+  // { value: "overall",           label: "Highest Overall Score" },
   { value: "supporting_papers", label: "Most Supporting Papers" },
   { value: "most_recent",       label: "Most Recent" },
 ];
@@ -463,9 +463,9 @@ function GapCardItem({ gap, selected, onSelect }: {
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <Pill label="Novelty"     value={gap.novelty_score}     bg={C.purple} />
           <Pill label="Feasibility" value={gap.feasibility_score} bg={C.green} />
-          {gap.overall_score !== null && (
+          {/* {gap.overall_score !== null && (
             <Pill label="Overall" value={gap.overall_score} bg={C.amber} />
-          )}
+          )} */}
           <span style={{
             fontSize: 11, color: C.mid, fontWeight: 500,
             padding: "2px 8px", borderRadius: 20,
