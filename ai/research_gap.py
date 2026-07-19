@@ -647,36 +647,57 @@ def save_gap_cards_to_db(output, paper_ids):
 # Prompt + Ollama
 # -------------------------
 def build_prompt(paper_text):
-    return f"""You are a senior biomedical research analyst.
- 
-Analyze the following research papers and identify research gaps.
- 
+    return f"""You are a senior researcher specializing in Ayurvedic and
+integrative biomedical science, with expertise in both classical Ayurvedic
+pharmacology (dravyaguna) and modern evidence-based validation.
+
+Analyze the following research papers and identify research gaps —
+specifically gaps at the intersection of traditional Ayurvedic knowledge
+and modern scientific validation. Prioritize gaps such as:
+- Ayurvedic formulations or single herbs with strong traditional use but
+  weak modern clinical validation
+- Classical indications (as described in texts like Charaka Samhita,
+  Sushruta Samhita, or Bhavaprakasha) that lack pharmacological or
+  mechanistic explanation in modern literature
+- Standardization gaps (dosage, extraction method, quality control) that
+  prevent traditional formulations from being clinically reproducible
+- Discrepancies between traditional dosha-based indications and modern
+  disease classifications
+- Safety/toxicology data gaps for commonly used Ayurvedic substances
+
 For each gap's "title": write a short, meaningful, academic-style title
 (4-10 words) that a researcher could scan and immediately understand, e.g.
 "Explainable AI for Diabetes Diagnosis" or "Standardization of Curcumin
 Extraction Methods". NEVER use a generic placeholder like "Gap 1", and
 NEVER just dump keywords as the title (e.g. do not write "turmeric,
 curcumin, extraction" as a title).
- 
+
 For each gap, rate:
-- "novelty_score": how novel/underexplored this gap is, on a 0-10 scale (10 = highly novel and unexplored)
-- "feasibility_score": how feasible it would be to address this gap with current methods, on a 0-10 scale
- 
+- "novelty_score": how novel/underexplored this gap is, on a 0-10 scale
+  (10 = highly novel and unexplored). A gap with strong traditional use
+  but almost no modern validation should score HIGH on novelty.
+- "feasibility_score": how feasible it would be to address this gap with
+  current methods, on a 0-10 scale. Consider regulatory pathways for
+  herbal/nutraceutical products, availability of standardized extracts,
+  and existing analytical methods (HPLC, GC-MS, etc.) when scoring.
+
 For each gap, extract "related_entities" GROUPED BY CATEGORY. Only include
 categories that actually apply -- omit empty ones. Valid categories:
 "diseases", "herbs", "drugs", "biomarkers", "methods", "datasets", "genes",
-"chemicals". Example: {{"herbs": ["Turmeric"], "chemicals": ["Curcumin"],
-"methods": ["HPLC"]}}
- 
+"chemicals". Use the Ayurvedic/Sanskrit name for herbs where the paper
+uses it (e.g. "Ashwagandha" not just "Withania somnifera"), and include
+the botanical name too if given. Example: {{"herbs": ["Ashwagandha
+(Withania somnifera)"], "chemicals": ["Withanolide A"], "methods": ["HPLC"]}}
+
 For each gap, list which of the papers above specifically support it, under
 "supporting_evidence". For each entry:
 - "paper_title" MUST be copied EXACTLY (verbatim, character-for-character)
   from one of the "Title:" lines below -- do not paraphrase, shorten, or
   invent titles.
 - "gap_specific_abstract": 2-3 sentences explaining (a) why this specific
-  paper supports this gap, (b) what limitation it identifies, and (c) how
-  it contributes to understanding the gap. Write this as one flowing
-  summary, not a list.
+  paper supports this gap, (b) what limitation it identifies -- especially
+  if it's a traditional-vs-modern evidence gap, and (c) how it contributes
+  to understanding the gap. Write this as one flowing summary, not a list.
  
 Respond with ONLY valid JSON. No markdown, no code fences, no commentary.
 Use EXACTLY this structure:
