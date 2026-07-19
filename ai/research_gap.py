@@ -856,11 +856,11 @@ def compute_cluster_distance(gap_text, paper_embeddings):
         return None
     return round(1 - sim, 4)
  
-def expand_supporting_papers(gap_title, gap_description, matched_papers,paper_embedding_pairs, max_total=8,min_similarity=0.35):
+def expand_supporting_papers(gap_title, gap_description, matched_papers,paper_embedding_pairs,min_similarity=0.60,hard_cap=15):
     """
-    Expands beyond the LLM's explicit citations by finding other
-    semantically similar papers from the sampled pool — no extra
-    Ollama calls, uses embeddings already computed.
+    Adds semantically similar papers as supporting evidence.
+    Count is NOT fixed — it's however many papers genuinely clear min_similarity, up to hard_cap as a safety ceiling only.
+    Papers with no usable abstract are skipped entirely.
     """
     existing_ids = {p["paper_id"] for p in matched_papers}
 
@@ -871,27 +871,34 @@ def expand_supporting_papers(gap_title, gap_description, matched_papers,paper_em
     scored = []
     for row, emb in paper_embedding_pairs:
         pid = str(row[0])
+        title = row[1] or ""
+        abstract = row[2] or ""
+
         if pid in existing_ids:
             continue
+        # Skip papers with no real abstract — can't produce a
+        # meaningful gap-specific summary without content.
+        if not abstract or len(abstract.strip()) < 50:
+            continue
+        if len(title) < 15:
+            continue
+
         sim = cosine_similarity(gap_emb, emb)
         if sim and sim >= min_similarity:
             scored.append((sim, row))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    slots_left = max_total - len(matched_papers)
 
-    for sim, row in scored[:slots_left]:
+    for sim, row in scored[:hard_cap]:
         pid, title, abstract, year_raw, pmid, doi = row
+        snippet = _abstract_snippet(abstract, 35)
         matched_papers.append({
             "paper_id":              str(pid),
             "title":                 title or "Untitled",
             "doi":                   doi,
             "year":                  _extract_year(year_raw),
             "paper_url":             build_paper_link(pid, pmid, doi),
-            "gap_specific_abstract": (
-                f"Thematically related (similarity {sim:.2f}) — "
-                f"{_abstract_snippet(abstract, 35)}"
-            ),
+            "gap_specific_abstract": f"Thematically related (similarity {sim:.2f}) — {snippet}",
         })
 
     return matched_papers
