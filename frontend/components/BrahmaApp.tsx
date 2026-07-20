@@ -5,7 +5,7 @@ import { Sidebar } from "./layout/Sidebar";
 import { TopBar } from "./layout/TopBar";
 import { Dashboard } from "./dashboard/Dashboard";
 import { RishiStudio } from "./discover/RishiStudio";
-import { RecapLibrary } from "./library/RecapLibrary";
+import { RecapLibrary } from "./library/recap/RecapLibrary";
 import { StudyDesignStudio } from "./study-design/StudyDesignStudio";
 import { ProtocolsList } from "./features/ProtocolsList";
 import { Exports } from "./features/Exports";
