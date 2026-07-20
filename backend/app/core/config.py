@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # Neo4j
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
-    NEO4J_PASSWORD: str = "password"
+    NEO4J_PASSWORD: str = "rishiai@123"
 
     # Ollama
     OLLAMA_HOST: str = "http://localhost:11434"
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "null"]
 
-    model_config = {"case_sensitive": True, "env_file": ".env"}
+    model_config = {"case_sensitive": True, "env_file": ".env", "extra": "ignore"}
 
 from pydantic_settings import BaseSettings
 from typing import List, Optional

@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useMemo } from "react";
+import { KnowledgeGraph } from "../features/KnowledgeGraph";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -977,35 +978,10 @@ export function RishiStudio({ setActivePage }: { setActivePage: (p: string) => v
           )}
 
           {/* ════ STEP 4 — KNOWLEDGE GRAPH (placeholder) ════ */}
+          {/* ════ STEP 4 — KNOWLEDGE GRAPH ════ */}
           {activeStep === 4 && (
-            <div style={{ textAlign: "center", padding: "60px 0" }}>
-              <div style={{
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                width: 64, height: 64, borderRadius: "50%",
-                background: C.soft + "44", border: `2px dashed ${C.soft}`,
-                marginBottom: 20,
-              }}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.mid} strokeWidth="1.5">
-                  <circle cx="12" cy="12" r="3" /><circle cx="3" cy="6" r="2" /><circle cx="21" cy="6" r="2" />
-                  <circle cx="3" cy="18" r="2" /><circle cx="21" cy="18" r="2" />
-                  <line x1="5" y1="6" x2="10" y2="11" /><line x1="19" y1="6" x2="14" y2="11" />
-                  <line x1="5" y1="18" x2="10" y2="13" /><line x1="19" y1="18" x2="14" y2="13" />
-                </svg>
-              </div>
-              <h3 style={{ margin: "0 0 10px", fontSize: 18, fontWeight: 600, color: C.navy }}>
-                Knowledge Graph
-              </h3>
-              <p style={{ fontSize: 13, color: C.muted, maxWidth: 400, margin: "0 auto", lineHeight: 1.7 }}>
-                An interactive entity-relationship graph for <strong>"{topic || "your topic"}"</strong> will
-                appear here once this feature is integrated. It will show connections between herbs,
-                diseases, drugs, genes, and biomarkers discovered across the analysed papers.
-              </p>
-              <div style={{
-                marginTop: 24, padding: "10px 16px", borderRadius: 10, display: "inline-block",
-                background: C.amber + "33", border: `1px solid ${C.amber}`, fontSize: 12, color: "#633806",
-              }}>
-                🚧 Coming soon — integration by Member 2 (Neo4j + KnowledgeGraph.tsx)
-              </div>
+            <div style={{ minHeight: 600 }}>
+              <KnowledgeGraph initialQuery={topic} userId="demo_user" />
             </div>
           )}
 

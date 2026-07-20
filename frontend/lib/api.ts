@@ -1,4 +1,4 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE_URL = process.env.NEXT_PUBLIC_GAPS_API_URL || "http://localhost:8001";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -160,7 +160,28 @@ export async function pollSearchStatus(job_id: string): Promise<SearchJob> {
   if (!res.ok) throw new Error("Failed to poll status");
   return res.json();
 }
+export interface PaperEntity {
+  entity_id:      number;
+  canonical_name: string;
+  entity_type:    string;
+  section:        string;
+  evidence_text:  string;
+}
 
+export async function fetchPaperEntities(paperId: number | string): Promise<PaperEntity[]> {
+  const res = await fetch(`${BASE_URL}/api/papers/${paperId}/entities`);
+  if (!res.ok) throw new Error("Failed to fetch paper entities");
+  const data = await res.json();
+  return data.entities ?? [];
+}
+
+export async function extractEntities(paperId: number | string): Promise<{ status: string }> {
+  const res = await fetch(`${BASE_URL}/api/papers/${paperId}/extract`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to extract entities");
+  return res.json();
+}
 export async function fetchPapers(query: string, limit = 20): Promise<any[]> {
   try {
     const params = new URLSearchParams({ q: query, limit: String(limit) });
