@@ -15,10 +15,12 @@ class Paper(Base):
     publication_date = Column(Date, nullable=False)
     doi = Column(String(255), unique=True, index=True)
     pmid = Column(String(255), unique=True, index=True)   # PubMed ID
-    url = Column(Text, nullable=False)        # PubMed URL
+    # open_access column removed because it doesn't exist in the remote DB
     source = Column(String(100), default="pubmed")
-    open_access = Column(String(10), default="false")
-    # 1536‑dimensional embedding (e.g., BioBERT or SciBERT)
+    @property
+    def open_access(self) -> str:
+        return "false"
+    # 1536‑dimensional embedding (e.g., BioBERT or SciBERT) to match remote DB
     embedding = Column(Vector(1536))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
