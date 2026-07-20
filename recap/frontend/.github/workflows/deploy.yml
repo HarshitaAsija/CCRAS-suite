@@ -1,0 +1,24 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Compose
+        # If Docker Compose is not installed, you may need to install it.
+        # However, self-hosted runners should have Docker and Docker Compose pre-installed.
+        # We'll just check the version and proceed.
+        run: |
+          docker compose version
+
+      - name: Build and start services
+        run: |
+          cd infra
+          docker compose up --build -d

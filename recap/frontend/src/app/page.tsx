@@ -1,0 +1,640 @@
+"use client";
+
+// frontend/src/app/page.tsx
+// KRITA — Research Engine Homepage Dashboard
+// Redesign notes:
+// - Only ONE illustrated visual on the page: a "paper → insight" pipeline —
+//   a research document flowing into structured, analyzed data. Professional,
+//   minimalist, single-line style. No magnifying glass, microscope, book,
+//   bookmark, or knowledge-graph art.
+// - A single KritaLogo mark appears top-left of the hero, matching the mark
+//   used in the sidebar (swap the SVG path below if your sidebar mark differs —
+//   this component is written so you can drop the same file in both places).
+// - Soft light-purple glow + glitter treatment: blurred gradient "auras",
+//   glow shadows, and a scattering of small twinkling sparkle marks — kept
+//   minimal so it reads as premium/professional rather than busy.
+// - Trending Topics and Platform Stats remain 100% live-data-driven: no mock
+//   arrays, no fabricated sparkline history. If the API has nothing yet, the UI
+//   shows an explicit empty/error state instead of inventing numbers.
+// - FIX: stats mapping reverted to the field names that were actually working
+//   (growing/expanding/diverse/curated/verified) — see fetchStats below, plus
+//   a one-line console.log so you can confirm the real API shape instantly.
+
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import {
+  Search,
+  MessageSquare,
+  GitBranch,
+  BarChart2,
+  ArrowRight,
+  RefreshCw,
+  TrendingUp,
+  Sparkles,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+// ─── Local types ──────────────────────────────────────────────────────────────
+interface TrendingTopic {
+  id: string;
+  name: string;
+  paperCount: number;
+  /** Optional real history from the API. Sparkline + % change only render when this exists. */
+  trend?: number[];
+}
+
+interface PlatformStats {
+  papersIndexed: number | string;
+  fullTexts: number | string;
+  authors: number | string;
+  journals: number | string;
+  dataQuality: number | string;
+}
+
+// ─── Icon/Color pairs cycled across whatever topics the API returns ──────────
+const TOPIC_STYLES = [
+  { icon: "🌿", color: "#7C3AED", chip: "bg-violet-100 text-violet-600" },
+  { icon: "🧘", color: "#F59E0B", chip: "bg-amber-100 text-amber-600" },
+  { icon: "⚗️", color: "#DB2777", chip: "bg-fuchsia-100 text-fuchsia-600" },
+  { icon: "🧬", color: "#0891B2", chip: "bg-cyan-100 text-cyan-600" },
+  { icon: "🔬", color: "#059669", chip: "bg-emerald-100 text-emerald-600" },
+];
+
+// ─── Quick Access Cards config (plain lucide icons only — no illustration art) ─
+const QUICK_ACCESS = [
+  {
+    icon: Search,
+    label: "Smart Search",
+    desc: "Hybrid semantic + keyword search across millions of papers",
+    href: "/search",
+    color: "text-violet-600",
+    bg: "bg-violet-100",
+  },
+  {
+    icon: MessageSquare,
+    label: "RAG Assistant",
+    desc: "Ask questions and get answers with cited references",
+    href: "/chat",
+    color: "text-teal-600",
+    bg: "bg-teal-100",
+  },
+  {
+    icon: GitBranch,
+    label: "Snowballing",
+    desc: "Discover related papers through citation chasing",
+    href: "/snowballing",
+    color: "text-amber-600",
+    bg: "bg-amber-100",
+  },
+  {
+    icon: BarChart2,
+    label: "Analytics",
+    desc: "Analyze trends, impact, and research patterns",
+    href: "/analytics",
+    color: "text-fuchsia-600",
+    bg: "bg-fuchsia-100",
+  },
+];
+
+// ─── Suggestion chips ───────────────────────────────────────────────────────────
+const SUGGESTIONS = [
+  { label: "Machine Learning", chip: "bg-violet-100 text-violet-700" },
+  { label: "CRISPR Gene Editing", chip: "bg-pink-100 text-pink-700" },
+  { label: "Transformer Models", chip: "bg-indigo-100 text-indigo-700" },
+  { label: "Cancer Immunotherapy", chip: "bg-blue-100 text-blue-700" },
+  { label: "Climate Change", chip: "bg-teal-100 text-teal-700" },
+];
+
+function formatStat(value: number | string) {
+  if (typeof value === "number") return value.toLocaleString();
+  return value;
+}
+
+// ─── Tiny Sparkline SVG (only ever fed real API history — this is a data
+// visualization, not decorative art, so it's exempt from the "one image" rule) ─
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  if (!data || data.length < 2) return null;
+
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const w = 80;
+  const h = 28;
+  const pts = data
+    .map((v, i) => {
+      const x = (i / (data.length - 1)) * w;
+      const y = h - ((v - min) / (max - min || 1)) * h;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="overflow-visible">
+      <polyline
+        points={pts}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// ─── KRITA logo mark ─────────────────────────────────────────────────────────
+// A simple, professional monogram (angular "K" built from three glowing facets)
+// on a rounded violet-to-indigo gradient tile. Drop this exact component into
+// your Sidebar/TopNav too so the mark matches everywhere.
+function KritaLogo({ size = 40 }: { size?: number }) {
+  return (
+    <div
+      className="relative flex items-center justify-center rounded-xl shadow-[0_0_18px_rgba(124,58,237,0.55)]"
+      style={{
+        width: size,
+        height: size,
+        background: "linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)",
+      }}
+    >
+      <svg viewBox="0 0 32 32" width={size * 0.6} height={size * 0.6}>
+        <path d="M7 4 L7 28 L11.5 28 L11.5 17.5 L21 28 L27 28 L15 15 L26 4 L20.2 4 L11.5 13 L11.5 4 Z" fill="white" />
+      </svg>
+    </div>
+  );
+}
+
+// ─── The single homepage illustration: a research paper flowing into insight ─
+// A document card on the left feeds into a compact analysis card on the right,
+// joined by a glowing flow arrow — reads as "your papers become clear answers."
+// Minimalist single-line style, soft violet glow, small twinkling sparkle marks.
+function ResearchInsightIllustration() {
+  return (
+    <svg viewBox="0 0 360 320" className="w-full h-full">
+      <defs>
+        <radialGradient id="riGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#A78BFA" stopOpacity="0.85" />
+          <stop offset="100%" stopColor="#7C3AED" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="riCardGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="100%" stopColor="#F5F3FF" />
+        </linearGradient>
+        <linearGradient id="riFlowGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#C4B5FD" />
+          <stop offset="100%" stopColor="#7C3AED" />
+        </linearGradient>
+        <filter id="riSoftGlow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="5" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* ambient glow behind the whole scene */}
+      <circle cx="180" cy="165" r="150" fill="url(#riGlow)" opacity="0.3" />
+
+      {/* left: research paper card */}
+      <g filter="url(#riSoftGlow)">
+        <rect x="34" y="70" width="120" height="150" rx="12" fill="url(#riCardGrad)" stroke="#C4B5FD" strokeWidth="2" />
+      </g>
+      <rect x="52" y="94" width="70" height="7" rx="3.5" fill="#7C3AED" opacity="0.85" />
+      <rect x="52" y="112" width="84" height="4" rx="2" fill="#DDD6FE" />
+      <rect x="52" y="124" width="72" height="4" rx="2" fill="#DDD6FE" />
+      <rect x="52" y="136" width="80" height="4" rx="2" fill="#DDD6FE" />
+      <rect x="52" y="148" width="60" height="4" rx="2" fill="#DDD6FE" />
+      <rect x="52" y="168" width="84" height="4" rx="2" fill="#EDE9FE" />
+      <rect x="52" y="180" width="66" height="4" rx="2" fill="#EDE9FE" />
+
+      {/* flow arrow — paper becomes insight */}
+      <g filter="url(#riSoftGlow)">
+        <line x1="164" y1="145" x2="216" y2="145" stroke="url(#riFlowGrad)" strokeWidth="3" strokeLinecap="round" />
+        <path d="M206 135 L220 145 L206 155" fill="none" stroke="url(#riFlowGrad)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+
+      {/* right: compact insight / analysis card */}
+      <g filter="url(#riSoftGlow)">
+        <rect x="228" y="60" width="108" height="130" rx="12" fill="url(#riCardGrad)" stroke="#C4B5FD" strokeWidth="2" />
+      </g>
+      <rect x="244" y="76" width="52" height="6" rx="3" fill="#7C3AED" opacity="0.85" />
+      {/* mini bar chart */}
+      <rect x="244" y="140" width="10" height="30" rx="2.5" fill="#C4B5FD" />
+      <rect x="260" y="126" width="10" height="44" rx="2.5" fill="#7C3AED" />
+      <rect x="276" y="134" width="10" height="36" rx="2.5" fill="#A78BFA" />
+      <rect x="292" y="112" width="10" height="58" rx="2.5" fill="#4F46E5" />
+      <rect x="308" y="122" width="10" height="48" rx="2.5" fill="#818CF8" />
+      {/* confirmed-insight badge */}
+      <circle cx="316" cy="90" r="12" fill="#059669" />
+      <path d="M311 90 L315 94 L322 85" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+      {/* twinkling sparkle marks — the "glitter" accents, kept sparse */}
+      <g filter="url(#riSoftGlow)">
+        <path d="M292 40 L295 48 L303 51 L295 54 L292 62 L289 54 L281 51 L289 48 Z" fill="#FBBF24" opacity="0.9" />
+        <path d="M60 50 L62 55 L67 57 L62 59 L60 64 L58 59 L53 57 L58 55 Z" fill="#C4B5FD" opacity="0.85" />
+        <path d="M330 210 L332 215 L337 217 L332 219 L330 224 L328 219 L323 217 L328 215 Z" fill="#F0ABFC" opacity="0.85" />
+      </g>
+      <circle cx="200" cy="230" r="3" fill="#A78BFA" opacity="0.7" />
+      <circle cx="40" cy="200" r="2.5" fill="#FBBF24" opacity="0.7" />
+      <circle cx="345" cy="150" r="2.5" fill="#818CF8" opacity="0.7" />
+    </svg>
+  );
+}
+
+// ─── Main Page ──────────────────────────────────────────────────────────────────
+export default function HomePage() {
+  const [query, setQuery] = useState("");
+  const [searchType, setSearchType] = useState("Hybrid Search");
+
+  const [trendingTopics, setTrendingTopics] = useState<TrendingTopic[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(true);
+  const [trendingError, setTrendingError] = useState<string | null>(null);
+
+  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
+  const handleSearch = () => {
+    if (query.trim()) {
+      window.location.href = `/search?q=${encodeURIComponent(query)}`;
+    }
+  };
+
+  const fetchTrending = useCallback(async (isInitial: boolean) => {
+    if (isInitial) setTrendingLoading(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/dashboard/trending-topics");
+      if (!res.ok) throw new Error("Failed to fetch trending topics");
+      const data = await res.json();
+
+      const processed: TrendingTopic[] = data.map((item: any) => ({
+        id: item.topic,
+        name: item.topic,
+        paperCount: item.paper_count,
+        // Only use `trend` if the API actually sends real history — never fabricate one.
+        trend: Array.isArray(item.trend) ? item.trend : undefined,
+      }));
+
+      setTrendingTopics(processed);
+      setTrendingError(null);
+    } catch (err) {
+      console.error("Failed to fetch trending topics:", err);
+      // Keep whatever real data we already have on screen; only surface an
+      // error state if we have nothing yet to show.
+      if (isInitial) setTrendingError("Couldn't load trending topics.");
+    } finally {
+      if (isInitial) setTrendingLoading(false);
+    }
+  }, []);
+
+  const fetchStats = useCallback(async (isInitial: boolean) => {
+    if (isInitial) setStatsLoading(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/dashboard/stats");
+      if (!res.ok) throw new Error("Failed to fetch stats");
+      const data = await res.json();
+
+      // TEMP: check your browser console — confirm these keys match what
+      // your API actually sends back, then remove this log once confirmed.
+      console.log("dashboard/stats raw response:", data);
+
+      // Reverted to the field names that were actually working before the
+      // UI rewrite (growing/expanding/diverse/curated/verified), not the
+      // guessed snake_case names from the earlier version of this file.
+      setPlatformStats({
+        papersIndexed: data.growing,
+        fullTexts: data.expanding,
+        authors: data.diverse,
+        journals: data.curated,
+        dataQuality: data.verified,
+      });
+      setStatsError(null);
+    } catch (err) {
+      console.error("Failed to fetch dashboard stats:", err);
+      if (isInitial) setStatsError("Couldn't load platform stats.");
+    } finally {
+      if (isInitial) setStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let firstRun = true;
+
+    const tick = () => {
+      fetchTrending(firstRun);
+      fetchStats(firstRun);
+      firstRun = false;
+    };
+
+    tick();
+    const interval = setInterval(tick, 7000);
+    return () => clearInterval(interval);
+  }, [fetchTrending, fetchStats]);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-[#F8F6FD] to-white">
+      {/* ── Hero Section ────────────────────────────────────────────────── */}
+      <section className="relative px-8 pt-6 pb-12 overflow-hidden bg-gradient-to-b from-[#EDE9FE] via-[#F3F0FC] to-transparent">
+        {/* Background dot grid */}
+        <div
+          className="absolute inset-0 opacity-[0.3]"
+          style={{
+            backgroundImage: "radial-gradient(circle, #c4b5fd 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+          }}
+        />
+
+        {/* Ambient purple glow "auras" — the glowing-effect layer for the whole hero */}
+        <div className="absolute -top-24 -left-24 w-96 h-96 bg-violet-400/30 rounded-full blur-3xl pointer-events-none animate-pulse [animation-duration:6s]" />
+        <div className="absolute -bottom-32 -right-16 w-[28rem] h-[28rem] bg-indigo-400/25 rounded-full blur-3xl pointer-events-none animate-pulse [animation-duration:8s]" />
+        <div className="absolute top-1/3 right-1/4 w-64 h-64 bg-fuchsia-300/20 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Logo — top-left, same mark as the sidebar */}
+        <div className="relative flex items-center gap-2.5 mb-8">
+          <KritaLogo size={38} />
+          <span className="font-heading text-lg font-bold tracking-tight text-slate-800">
+            KRITA
+          </span>
+        </div>
+
+        <div className="relative max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_360px] items-center gap-8">
+          {/* Left: headline + search */}
+          <div className="text-center lg:text-left">
+            <h1 className="font-heading text-6xl font-extrabold tracking-tight bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent mb-3 drop-shadow-[0_0_24px_rgba(124,58,237,0.25)]">
+              KRITA
+            </h1>
+            <p className="text-base font-semibold text-slate-700 mb-1">
+              Research Engine for Categorization, Analysis &amp; Papers
+            </p>
+            <p className="text-sm text-slate-500 mb-8 max-w-xl mx-auto lg:mx-0">
+              AI-powered research repository and RAG platform for discovering,
+              understanding, and synthesizing scientific knowledge.
+            </p>
+
+            {/* Search bar */}
+            <div className="flex gap-2 bg-white border border-violet-100 rounded-xl p-1.5 shadow-lg shadow-violet-300/30 ring-1 ring-violet-100 focus-within:shadow-[0_0_28px_rgba(124,58,237,0.35)] transition-shadow">
+              <Search className="w-4 h-4 text-slate-400 self-center ml-2 flex-shrink-0" />
+              <Input
+                className="flex-1 border-0 shadow-none focus-visible:ring-0 bg-transparent text-slate-800 placeholder:text-slate-400"
+                placeholder="Search papers, authors, keywords, topics, DOI..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              />
+              <select
+                className="text-xs text-slate-600 border border-violet-100 rounded-lg px-2 py-1 bg-violet-50/60 focus:outline-none focus:ring-1 focus:ring-violet-400/40"
+                value={searchType}
+                onChange={(e) => setSearchType(e.target.value)}
+              >
+                <option>Hybrid Search</option>
+                <option>Semantic Search</option>
+                <option>Keyword Search</option>
+                <option>Citation Search</option>
+              </select>
+              <Button
+                className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-lg px-5 h-9 text-sm shadow-[0_0_20px_rgba(124,58,237,0.5)] hover:shadow-[0_0_28px_rgba(124,58,237,0.7)] transition-shadow"
+                onClick={handleSearch}
+              >
+                Search
+              </Button>
+            </div>
+
+            {/* Suggestion chips */}
+            <div className="flex flex-wrap justify-center lg:justify-start gap-2 mt-4">
+              <span className="text-xs text-slate-400 self-center">Try:</span>
+              {SUGGESTIONS.map(({ label, chip }) => (
+                <button
+                  key={label}
+                  onClick={() => setQuery(label)}
+                  className={`text-xs px-3 py-1 rounded-full font-medium ${chip} hover:opacity-80 transition-opacity`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Right: the one signature illustration for the whole page */}
+          <div className="hidden lg:block relative w-full h-72">
+            <ResearchInsightIllustration />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Main Content ────────────────────────────────────────────────── */}
+      <div className="px-6 py-6 max-w-[1400px] mx-auto">
+        {/* Quick Access */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-500 tracking-wide">Quick Access</h2>
+          <Link href="/search" className="text-xs text-violet-600 hover:text-violet-700 flex items-center gap-1">
+            View All <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          {QUICK_ACCESS.map(({ icon: Icon, label, desc, href, color, bg }) => (
+            <Link
+              key={href}
+              href={href}
+              className="relative overflow-hidden bg-white rounded-xl border border-violet-100 p-4 hover:shadow-[0_0_24px_rgba(124,58,237,0.25)] hover:border-violet-200 hover:-translate-y-0.5 transition-all group"
+            >
+              <div className={`relative w-9 h-9 rounded-lg ${bg} flex items-center justify-center mb-3`}>
+                <Icon className={`w-4.5 h-4.5 ${color}`} />
+              </div>
+              <p className="relative text-sm font-semibold text-slate-800 mb-1">{label}</p>
+              <p className="relative text-xs text-slate-500 leading-relaxed line-clamp-2">{desc}</p>
+              <div className={`relative mt-3 ${color} opacity-0 group-hover:opacity-100 transition-opacity`}>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {/* ── Feature strip — text + icon only, no extra imagery ─────────── */}
+        <div className="bg-white rounded-2xl border border-violet-100 px-6 py-5 mb-6 shadow-sm">
+          <h3 className="font-heading font-bold text-lg text-slate-800 mb-1">
+            Every paper, every citation, connected
+          </h3>
+          <p className="text-sm text-slate-500 max-w-2xl mb-5">
+            Upload a paper and KRITA maps out what it cites and what cites it —
+            so one search turns into a whole trail worth following.
+          </p>
+          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-violet-50">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+                <Search className="w-4 h-4 text-violet-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Hybrid retrieval</p>
+                <p className="text-xs text-slate-500">Semantic + keyword ranking in one pass</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-fuchsia-100 flex items-center justify-center flex-shrink-0">
+                <GitBranch className="w-4 h-4 text-fuchsia-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Citation trails</p>
+                <p className="text-xs text-slate-500">Follow references forward and backward</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
+                <MessageSquare className="w-4 h-4 text-teal-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Cited answers</p>
+                <p className="text-xs text-slate-500">Ask questions, get sourced responses</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Two-column layout: Trending Topics (main) + CTA sidebar */}
+        <div className="grid grid-cols-[1fr_280px] gap-6">
+          {/* ── Trending Topics (main panel, live data only) ──────────────── */}
+          <div className="bg-white rounded-xl border border-violet-100 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-slate-500 tracking-wide flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-violet-500" />
+                Trending Topics
+              </h2>
+              <Link href="/search" className="text-xs text-violet-600 hover:text-violet-700 flex items-center gap-1">
+                View All <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+
+            {trendingLoading ? (
+              <ul className="space-y-3 animate-pulse">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <li key={i} className="h-12 bg-violet-50 rounded-lg" />
+                ))}
+              </ul>
+            ) : trendingError ? (
+              <div className="flex flex-col items-center justify-center text-center py-10">
+                <p className="text-sm text-slate-500 mb-3">{trendingError}</p>
+                <button
+                  onClick={() => fetchTrending(true)}
+                  className="flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-700"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Try again
+                </button>
+              </div>
+            ) : trendingTopics.length === 0 ? (
+              <div className="flex flex-col items-center text-center py-10">
+                <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center mb-3">
+                  <Sparkles className="w-5 h-5 text-violet-500" />
+                </div>
+                <p className="text-sm text-slate-500">
+                  No trending topics yet — they&apos;ll appear here once papers are indexed.
+                </p>
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {trendingTopics.map((topic, index) => {
+                  const style = TOPIC_STYLES[index % TOPIC_STYLES.length];
+                  const change =
+                    topic.trend && topic.trend.length >= 2
+                      ? Math.round(
+                          ((topic.trend[topic.trend.length - 1] - topic.trend[0]) /
+                            (topic.trend[0] || 1)) *
+                            100
+                        )
+                      : null;
+
+                  return (
+                    <li
+                      key={topic.id}
+                      className="flex items-center justify-between group cursor-pointer hover:bg-violet-50/60 -mx-2 px-2 py-2 rounded-lg transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className="w-9 h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0"
+                          style={{ backgroundColor: `${style.color}1a` }}
+                        >
+                          {style.icon}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">{topic.name}</p>
+                          <p className="text-xs text-slate-400">{topic.paperCount} papers</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {topic.trend && <Sparkline data={topic.trend} color={style.color} />}
+                        {change !== null && (
+                          <span
+                            className="text-xs font-semibold"
+                            style={{ color: change >= 0 ? "#059669" : "#DC2626" }}
+                          >
+                            {change >= 0 ? "↑" : "↓"} {Math.abs(change)}%
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {/* ── Right Sidebar: clean glowing CTA panel, text/icon only ───── */}
+          <div className="relative overflow-hidden bg-gradient-to-b from-violet-600 to-indigo-600 rounded-xl p-5 flex flex-col items-center text-center shadow-[0_0_30px_rgba(124,58,237,0.35)]">
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="relative w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center mb-3">
+              <KritaLogo size={30} />
+            </div>
+            <h2 className="relative text-sm font-semibold text-white mb-1">Your library, always in reach</h2>
+            <p className="relative text-xs text-violet-100 leading-relaxed">
+              Search, ask, and trace citations across the Ayurvedic research corpus in one place.
+            </p>
+            <Link
+              href="/library"
+              className="relative mt-4 text-xs font-medium text-white bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors"
+            >
+              Open Library <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+
+        {/* ── Platform Stats Bar (live data only) ───────────────────────── */}
+        <div className="mt-6 bg-white rounded-xl border border-violet-100 px-6 py-4">
+          {statsLoading ? (
+            <div className="grid grid-cols-5 gap-4 animate-pulse">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-10 bg-violet-50 rounded-lg mx-4" />
+              ))}
+            </div>
+          ) : statsError ? (
+            <div className="flex flex-col items-center justify-center text-center py-4">
+              <p className="text-sm text-slate-500 mb-3">{statsError}</p>
+              <button
+                onClick={() => fetchStats(true)}
+                className="flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-700"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Try again
+              </button>
+            </div>
+          ) : platformStats ? (
+            <div className="grid grid-cols-5 divide-x divide-violet-100">
+              {[
+                { value: platformStats.papersIndexed, label: "Papers Indexed" },
+                { value: platformStats.fullTexts, label: "Full Texts" },
+                { value: platformStats.authors, label: "Authors" },
+                { value: platformStats.journals, label: "Journals" },
+                { value: platformStats.dataQuality, label: "Data Quality" },
+              ].map(({ value, label }) => (
+                <div key={label} className="text-center px-4">
+                  <p className="font-heading text-xl font-extrabold text-slate-800">
+                    {formatStat(value)}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-sm text-slate-500 py-2">Stats will appear here once available.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
