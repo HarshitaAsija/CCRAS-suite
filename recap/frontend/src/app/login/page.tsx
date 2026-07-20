@@ -34,7 +34,7 @@ export default function LoginPage() {
       // ✅ loginUser already saves the token and user_id
       await loginUser(email, password);
       // ✅ No need to call saveToken() again
-      router.push("/"); // redirect to home after login
+      router.push("/dashboard"); // redirect to dashboard after login
     } catch (err: any) {
       setError(err.message || "Login failed. Please try again.");
     } finally {
