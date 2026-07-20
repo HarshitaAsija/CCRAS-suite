@@ -45,6 +45,10 @@ const C = {
   red:     "#F7C1C1",
   emerald: "#27AE60",
   scarlet: "#E74C3C",
+  navBg:      "#FFFFFF",
+  navBorder:  "#EEEFF2",
+  navActive:  "#1F3C66",
+  navInactive:"#8A93A3",
 };
 
 const FRONT_COLORS = ["#4C72B0","#55A868","#C44E52","#8172B2","#937860","#DA8BC3"];
@@ -727,25 +731,57 @@ export function RishiStudio({ setActivePage }: { setActivePage: (p: string) => v
     <div className="flex-1 flex overflow-hidden bg-background">
 
       {/* ── SIDEBAR ── */}
-      <div className="w-56 flex flex-col border-r border-border-light bg-surface shadow-sm z-20 flex-shrink-0">
-        <div className="p-4 border-b border-border-light flex items-center gap-2 text-primary font-black text-sm">
-          <Brain size={18} /> RISHI Studio
+      <div style={{
+        width: 260, display: "flex", flexDirection: "column",
+        background: C.navBg, borderRight: `1px solid ${C.navBorder}`,
+        flexShrink: 0,
+      }}>
+        <div style={{
+          padding: "24px 24px 20px",
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <Brain size={24} color={C.blue} strokeWidth={2} />
+          <span style={{ fontSize: 19, fontWeight: 700, color: C.blue }}>
+            RISHI Studio
+          </span>
         </div>
-        <div className="flex-1 overflow-auto p-3 flex flex-col gap-1">
-          {STEPS.map((step, i) => (
-            <button
-              key={i}
-              onClick={() => setActiveStep(i)}
-              className={`text-left px-3 py-2 text-xs font-semibold rounded-lg transition-colors flex items-center gap-2
-                ${activeStep === i ? "bg-primary text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"}`}
-            >
-              {activeStep === i
-                ? <Edit3 size={12} className="opacity-70 flex-shrink-0" />
-                : <Circle size={12} className="opacity-40 flex-shrink-0" />
-              }
-              {step.label}
-            </button>
-          ))}
+
+        <div style={{
+          flex: 1, overflow: "auto",
+          padding: "8px 16px", display: "flex",
+          flexDirection: "column", gap: 6,
+        }}>
+          {STEPS.map((step, i) => {
+            const active = activeStep === i;
+            return (
+              <button
+                key={i}
+                onClick={() => setActiveStep(i)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  textAlign: "left", width: "100%",
+                  padding: "13px 16px", borderRadius: 12,
+                  fontSize: 15, fontWeight: 600,
+                  border: "none", cursor: "pointer",
+                  background: active ? C.navActive : "transparent",
+                  color: active ? "#FFFFFF" : C.navInactive,
+                  transition: "background 0.15s, color 0.15s",
+                }}
+                onMouseEnter={e => {
+                  if (!active) (e.currentTarget as HTMLButtonElement).style.background = "#F5F6F8";
+                }}
+                onMouseLeave={e => {
+                  if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                }}
+              >
+                {active
+                  ? <Edit3 size={17} color="#FFFFFF" strokeWidth={2} />
+                  : <Circle size={17} color={C.navInactive} strokeWidth={1.8} />
+                }
+                {step.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -754,11 +790,14 @@ export function RishiStudio({ setActivePage }: { setActivePage: (p: string) => v
         <div style={{ padding: "28px 36px", maxWidth: 880, margin: "0 auto", width: "100%", flex: 1 }}>
 
           {/* Step heading */}
-          <div style={{ marginBottom: 24 }}>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.navy, fontFamily: "'Georgia', serif" }}>
+          <div style={{ marginBottom: 28 }}>
+            <h2 style={{
+              margin: 0, fontSize: 30, fontWeight: 800, color: C.navy,
+              letterSpacing: "-0.01em", fontFamily: "system-ui, -apple-system, sans-serif",
+            }}>
               {STEPS[activeStep].label}
             </h2>
-            <p style={{ margin: "4px 0 0", fontSize: 12, color: C.muted }}>
+            <p style={{ margin: "6px 0 0", fontSize: 14, color: C.muted }}>
               Step {activeStep + 1} of {STEPS.length}
             </p>
           </div>
