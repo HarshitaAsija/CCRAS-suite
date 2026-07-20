@@ -14,6 +14,7 @@ import {
   startSearch, pollSearchStatus, checkApiHealth,
   GapCard, HypothesisSeed, ResearchFront, TrendInfo, SortOption,
 } from "@/lib/api";
+import { ChevronLeft, ChevronRight as ChevronExpand } from "lucide-react";
 
 // ─────────────────────────────────────────────
 // SIDEBAR STEPS  (6 total)
@@ -659,6 +660,7 @@ export function RishiStudio({ setActivePage }: { setActivePage: (p: string) => v
   const [sortBy,       setSortBy]       = useState<SortOption>("novelty");
   const [loadingHyp,   setLoadingHyp]   = useState(false);
   const [hypError,     setHypError]     = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Sort gaps client-side based on sortBy
   const sortedGaps = useMemo(() => sortGaps(gaps, sortBy), [gaps, sortBy]);
@@ -732,24 +734,31 @@ export function RishiStudio({ setActivePage }: { setActivePage: (p: string) => v
 
       {/* ── SIDEBAR ── */}
       <div style={{
-        width: 260, display: "flex", flexDirection: "column",
+        width: sidebarCollapsed ? 76 : 260,
+        display: "flex", flexDirection: "column",
         background: C.navBg, borderRight: `1px solid ${C.navBorder}`,
         flexShrink: 0,
+        transition: "width 0.2s ease-out",
+        position: "relative",
       }}>
         <div style={{
-          padding: "24px 24px 20px",
-          display: "flex", alignItems: "center", gap: 10,
+          padding: sidebarCollapsed ? "24px 0 20px" : "24px 24px 20px",
+          display: "flex", alignItems: "center",
+          justifyContent: sidebarCollapsed ? "center" : "flex-start",
+          gap: 10,
         }}>
           <Brain size={24} color={C.blue} strokeWidth={2} />
-          <span style={{ fontSize: 19, fontWeight: 700, color: C.blue }}>
-            RISHI Studio
-          </span>
+          {!sidebarCollapsed && (
+            <span style={{ fontSize: 19, fontWeight: 700, color: C.blue }}>
+              RISHI AI
+            </span>
+          )}
         </div>
 
         <div style={{
           flex: 1, overflow: "auto",
-          padding: "8px 16px", display: "flex",
-          flexDirection: "column", gap: 6,
+          padding: sidebarCollapsed ? "8px 10px" : "8px 16px",
+          display: "flex", flexDirection: "column", gap: 1,
         }}>
           {STEPS.map((step, i) => {
             const active = activeStep === i;
@@ -757,11 +766,13 @@ export function RishiStudio({ setActivePage }: { setActivePage: (p: string) => v
               <button
                 key={i}
                 onClick={() => setActiveStep(i)}
+                title={sidebarCollapsed ? step.label : undefined}
                 style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  textAlign: "left", width: "100%",
-                  padding: "13px 16px", borderRadius: 12,
-                  fontSize: 15, fontWeight: 600,
+                  display: "flex", alignItems: "center",
+                  justifyContent: sidebarCollapsed ? "center" : "flex-start",
+                  gap: 10, textAlign: "left", width: "100%",
+                  padding: sidebarCollapsed ? "13px 0" : "13px 16px",
+                  borderRadius: 12, fontSize: 15, fontWeight: 600,
                   border: "none", cursor: "pointer",
                   background: active ? C.navActive : "transparent",
                   color: active ? "#FFFFFF" : C.navInactive,
@@ -778,16 +789,34 @@ export function RishiStudio({ setActivePage }: { setActivePage: (p: string) => v
                   ? <Edit3 size={17} color="#FFFFFF" strokeWidth={2} />
                   : <Circle size={17} color={C.navInactive} strokeWidth={1.8} />
                 }
-                {step.label}
+                {!sidebarCollapsed && step.label}
               </button>
             );
           })}
         </div>
-      </div>
+
+        {/* Collapse toggle */}
+        <button
+          onClick={() => setSidebarCollapsed(c => !c)}
+          style={{
+            position: "absolute", top: 20, right: -12,
+            width: 24, height: 24, borderRadius: "50%",
+            background: "#FFFFFF", border: `1px solid ${C.navBorder}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            zIndex: 10,
+          }}
+        >
+          {sidebarCollapsed
+            ? <ChevronExpand size={14} color={C.mid} />
+            : <ChevronLeft size={14} color={C.mid} />
+          }
+        </button>
+      </div>      
 
       {/* ── WORKSPACE ── */}
       <div className="flex-1 flex flex-col overflow-auto" style={{ background: C.cream }}>
-        <div style={{ padding: "28px 36px", maxWidth: 880, margin: "0 auto", width: "100%", flex: 1 }}>
+        <div style={{ padding: "20px 28px", maxWidth: "100%", width: "100%", flex: 1 }}>
 
           {/* Step heading */}
           <div style={{ marginBottom: 28 }}>
@@ -1044,7 +1073,7 @@ export function RishiStudio({ setActivePage }: { setActivePage: (p: string) => v
 
         {/* ── Footer nav ── */}
         <div style={{
-          padding: "12px 36px", background: "#fff",
+          padding: "12px 28px", background: "#fff",
           borderTop: `1px solid ${C.border}`,
           display: "flex", justifyContent: "space-between", alignItems: "center",
           position: "sticky", bottom: 0,
