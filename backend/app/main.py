@@ -1,5 +1,8 @@
 import logging
 from app.routers.entities import router as entities_router
+from app.routers.study import router as study_router
+from app.routers.study_design_ai import router as study_design_ai_router
+from app.routers.evidence_adapter import router as evidence_adapter_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,6 +17,9 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
 app.include_router(entities_router, prefix="/api/v1")
+app.include_router(study_router, prefix=settings.API_V1_STR)
+app.include_router(study_design_ai_router, prefix=settings.API_V1_STR)
+app.include_router(evidence_adapter_router, prefix=settings.API_V1_STR)
 # CORS
 
 app.add_middleware(
