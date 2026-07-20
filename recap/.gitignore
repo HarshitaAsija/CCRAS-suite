@@ -1,0 +1,141 @@
+# ============================================
+# Local scraper (not for production/team)
+# ============================================
+ayurveda-scraper/
+
+# ============================================
+# Environment files
+# ============================================
+.env
+.env.backup
+.env.local
+.env.*.local
+*.env
+*.env.backup
+
+# Keep .env.example as a template (it's safe to commit)
+# .env.example is NOT ignored (remove it from ignore list)
+
+# ============================================
+# Backend cache and compiled files
+# ============================================
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/*.pyd
+backend/.pytest_cache/
+backend/venv/
+backend/*.bak
+backend/*.backup
+backend/orchestrator.log*
+backend/*.log
+backend/*.pid
+
+# ============================================
+# IDE and OS files
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.code-workspace
+
+# ============================================
+# Logs and temporary files
+# ============================================
+*.log
+*.tmp
+*.temp
+logs/
+*.pid
+*.sqlite
+*.db
+
+# ============================================
+# Python
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+
+# ============================================
+# Alembic migrations (keep the script, ignore .pyc)
+# ============================================
+backend/alembic/__pycache__/
+backend/alembic/*.pyc
+backend/migrations/__pycache__/
+backend/migrations/*.pyc
+
+# ============================================
+# Database files (if any local db)
+# ============================================
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================
+# Test coverage
+# ============================================
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+
+# ============================================
+# Local ingestion/scraper files (NOT for team)
+# ============================================
+backend/ingestion/*crawler*
+backend/ingestion/*medrxiv*
+backend/ingestion/*biorxiv*
+backend/ingestion/*ayurveda*
+backend/ingestion/*scraper*
+backend/ingestion/local_*
+backend/ingestion/test_*
+
+# Also any other local files you want to ignore
+backend/*crawler*.py
+backend/*medrxiv*.py
+backend/*biorxiv*.py
+backend/*ayurveda*.py
+
+# ============================================
+# Local scraper files (NOT for team)
+# ============================================
+crawler.py
+backend/api/medrxiv_scraper.py
+backend/scripts/run_medrxiv.py
+backend/ingestion/*crawler*
+backend/ingestion/*medrxiv*
+backend/ingestion/*biorxiv*
+*.scraper.py
+
+# Already ignored
+ayurveda-scraper/ayurveda-scraper/
