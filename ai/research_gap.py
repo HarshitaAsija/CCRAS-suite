@@ -748,7 +748,7 @@ def call_ollama(prompt):
     )
     response.raise_for_status()
     return response.json()
- 
+
  
 # CHANGED: your config.py's OLLAMA_EMBED_URL is returning 404 against your
 # actual Ollama install, but curl confirmed http://localhost:11434/api/embeddings
