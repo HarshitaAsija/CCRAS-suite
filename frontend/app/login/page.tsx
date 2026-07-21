@@ -40,7 +40,7 @@ function LoginForm() {
     setError(''); setLoading(true);
     try {
       await login({ email, password });
-      window.location.href = params.get('redirectTo') || '/dashboard';
+      window.location.href = '/dashboard';
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally { setLoading(false); }
