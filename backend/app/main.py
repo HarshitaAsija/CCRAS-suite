@@ -40,6 +40,16 @@ from app.api.routers.ingestion_router import router as ingestion_router
 
 app.include_router(ingestion_router, prefix=settings.API_V1_STR)
 
+# Graph router
+from app.api.routers.graph_router import router as graph_router
+
+app.include_router(graph_router, prefix=settings.API_V1_STR)
+
+# Ontology router
+from app.api.routers.ontology_router import router as ontology_router
+
+app.include_router(ontology_router, prefix=settings.API_V1_STR)
+
 # Paper router
 try:
     from app.api.routers.paper_router import router as paper_router

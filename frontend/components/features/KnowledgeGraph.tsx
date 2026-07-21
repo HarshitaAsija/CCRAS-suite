@@ -1,202 +1,409 @@
 "use client";
-/* eslint-disable */
-import React, { useState } from "react";
-import { Badge } from "../shared/Badge";
-import { Sparkles, Network, ZoomIn, ZoomOut, Filter, Lightbulb } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import cytoscape, { Core, ElementDefinition } from "cytoscape";
+import { Sparkles, ZoomIn, ZoomOut, Loader2, AlertCircle, Maximize2 } from "lucide-react";
 
-export function KnowledgeGraph() {
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
-  
-  const nodes = [
-    { id: "PCSK9", x: 350, y: 200, type: "gene", r: 22, color: "#2563eb" },
-    { id: "LDL-C", x: 220, y: 150, type: "biomarker", r: 18, color: "#06b6d4" },
-    { id: "Evolocumab", x: 480, y: 140, type: "drug", r: 20, color: "#10b981" },
-    { id: "Alirocumab", x: 500, y: 260, type: "drug", r: 16, color: "#10b981" },
-    { id: "FH", x: 200, y: 280, type: "disease", r: 20, color: "#ef4444" },
-    { id: "ASCVD", x: 320, y: 340, type: "disease", r: 22, color: "#ef4444" },
-    { id: "LDLR", x: 130, y: 200, type: "gene", r: 16, color: "#2563eb" },
-    { id: "APOB", x: 160, y: 330, type: "gene", r: 14, color: "#2563eb" },
-    { id: "ANGPTL3", x: 440, y: 360, type: "gene", r: 14, color: "#2563eb" },
-    { id: "Evinacumab", x: 560, y: 340, type: "drug", r: 14, color: "#10b981" },
-    { id: "Inclisiran", x: 610, y: 190, type: "drug", r: 14, color: "#10b981" },
-    { id: "FOURIER", x: 350, y: 100, type: "paper", r: 12, color: "#8b5cf6" },
-    { id: "ODYSSEY", x: 240, y: 80, type: "paper", r: 12, color: "#8b5cf6" },
-    { id: "CV Death", x: 460, y: 420, type: "outcome", r: 16, color: "#f59e0b" },
-    { id: "MI", x: 550, y: 420, type: "outcome", r: 14, color: "#f59e0b" },
-  ];
-  
-  const edges: [string, string, number][] = [
-    ["PCSK9", "LDL-C", 0.95], ["PCSK9", "Evolocumab", 0.98], ["PCSK9", "Alirocumab", 0.95],
-    ["PCSK9", "FOURIER", 0.9], ["PCSK9", "ODYSSEY", 0.88], ["PCSK9", "LDLR", 0.85],
-    ["LDL-C", "FH", 0.92], ["LDL-C", "ASCVD", 0.89], ["LDLR", "FH", 0.96],
-    ["Evolocumab", "FOURIER", 0.98], ["Alirocumab", "ODYSSEY", 0.97],
-    ["FH", "ASCVD", 0.88], ["ASCVD", "CV Death", 0.82], ["ASCVD", "MI", 0.78],
-    ["ANGPTL3", "Evinacumab", 0.91], ["ANGPTL3", "FH", 0.65],
-    ["PCSK9", "Inclisiran", 0.9], ["APOB", "FH", 0.75], ["Evinacumab", "CV Death", 0.6],
-  ];
-  
-  const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
-  const typeColors: Record<string, string> = { 
-    gene: "bg-primary text-primary border-primary", 
-    drug: "bg-success text-success border-success", 
-    disease: "bg-danger text-danger border-danger", 
-    paper: "bg-accent text-accent border-accent", 
-    biomarker: "bg-cyan-500 text-cyan-500 border-cyan-500", 
-    outcome: "bg-warning text-warning border-warning" 
+// ── Config ────────────────────────────────────────────────────────────
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const GRAPH_ENDPOINT = `${API_BASE_URL}/api/v1/graph/`;
+
+// ── Types (match get_graph_for_viz's Cytoscape-style payload) ──────────
+interface GraphNodeData {
+  id: string;
+  label: string;
+  weight: number;
+  is_query: boolean;
+  relevance: number;
+}
+interface GraphEdgeData {
+  source: string;
+  target: string;
+  weight: number;
+  relation: string;
+}
+interface PaperRef {
+  id: string;
+  title: string;
+  journal: string;
+  doi: string;
+  match_type: string;
+}
+interface GraphResponse {
+  nodes: { data: GraphNodeData }[];
+  edges: { data: GraphEdgeData }[];
+  papers_by_concept: Record<string, PaperRef[]>;
+  warning?: string;
+  error?: string;
+}
+
+const RELATION_COLORS: Record<string, string> = {
+  treats: "#10b981",
+  causes: "#ef4444",
+  contains: "#2563eb",
+  interacts_with: "#8b5cf6",
+  part_of: "#06b6d4",
+  studied_in: "#f59e0b",
+  associated_with: "#94a3b8",
+  biomarker_of: "#ec4899",
+  produces: "#14b8a6",
+  prevents: "#22c55e",
+  co_occurs_with: "#cbd5e1",
+};
+const relationColor = (r: string) => RELATION_COLORS[r] || "#94a3b8";
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+      {children}
+    </span>
+  );
+}
+
+interface KnowledgeGraphProps {
+  initialQuery?: string;
+  userId?: string;
+}
+
+export function KnowledgeGraph({ initialQuery = "", userId = "demo_user" }: KnowledgeGraphProps) {
+  const [query, setQuery] = useState(initialQuery);
+  const [inputValue, setInputValue] = useState(initialQuery);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+  const [data, setData] = useState<GraphResponse | null>(null);
+  const [selectedNode, setSelectedNode] = useState<GraphNodeData | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cyRef = useRef<Core | null>(null);
+
+  const fetchGraph = useCallback(async (q: string) => {
+    if (!q.trim()) return;
+    setLoading(true);
+    setError(null);
+    setWarning(null);
+    try {
+      const res = await fetch(GRAPH_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q, user_id: userId }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`Graph request failed (${res.status}): ${text || res.statusText}`);
+      }
+      const json: GraphResponse = await res.json();
+      if (json.error) throw new Error(json.error);
+      setData(json);
+      if (json.warning) setWarning(json.warning);
+      setSelectedNode(null);
+    } catch (err) {
+      console.error("Failed to fetch knowledge graph:", err);
+      setError(err instanceof Error ? err.message : "Failed to load knowledge graph.");
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (initialQuery) fetchGraph(initialQuery);
+  }, [initialQuery, fetchGraph]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setQuery(inputValue);
+    fetchGraph(inputValue);
   };
-  const typeLabels = ["gene", "drug", "disease", "paper", "biomarker", "outcome"];
+
+  // ── Build / rebuild the Cytoscape instance whenever data changes ─────
+  useEffect(() => {
+    if (!containerRef.current || !data) return;
+
+    const nodes = data.nodes.map((n) => n.data);
+    const edges = data.edges.map((e) => e.data);
+    const maxWeight = Math.max(1, ...nodes.map((n) => n.weight || 1));
+
+    const elements: ElementDefinition[] = [
+      ...nodes.map((n) => ({
+        data: { ...n },
+        classes: n.is_query ? "query-node" : "concept-node",
+      })),
+      ...edges
+        .filter((e) => nodes.some((n) => n.id === e.source) && nodes.some((n) => n.id === e.target))
+        .map((e, i) => ({
+          data: { id: `edge-${i}`, ...e },
+        })),
+    ];
+
+    if (cyRef.current) {
+      cyRef.current.destroy();
+    }
+
+    const cy = cytoscape({
+      container: containerRef.current,
+      elements,
+      minZoom: 0.2,
+      maxZoom: 3,
+      style: [
+        {
+          selector: "node",
+          style: {
+            "background-color": "#ffffff",
+            "border-width": 2,
+            "border-color": "#64748b",
+            label: "data(label)",
+            "font-size": 10,
+            "text-valign": "bottom",
+            "text-margin-y": 6,
+            color: "#475569",
+            "text-wrap": "ellipsis",
+            "text-max-width": "80px",
+            width: (ele: any) => 16 + (ele.data("weight") / maxWeight) * 24,
+            height: (ele: any) => 16 + (ele.data("weight") / maxWeight) * 24,
+          },
+        },
+        {
+          selector: ".query-node",
+          style: {
+            "background-color": "#2563eb",
+            "border-color": "#2563eb",
+            "border-width": 3,
+            width: 48,
+            height: 48,
+            "font-weight": "bold",
+            "font-size": 12,
+            color: "#1e3a8a",
+          },
+        },
+        {
+          selector: "node:selected",
+          style: {
+            "border-width": 4,
+            "border-color": "#f59e0b",
+          },
+        },
+        {
+          selector: "edge",
+          style: {
+            width: (ele: any) => Math.max(1, Math.min(4, ele.data("weight"))),
+            "line-color": (ele: any) => relationColor(ele.data("relation")),
+            "target-arrow-color": (ele: any) => relationColor(ele.data("relation")),
+            "target-arrow-shape": (ele: any) =>
+              ele.data("relation") === "co_occurs_with" ? "none" : "triangle",
+            "curve-style": "bezier",
+            opacity: 0.6,
+            "line-style": (ele: any) =>
+              ele.data("relation") === "co_occurs_with" ? "dashed" : "solid",
+          },
+        },
+      ],
+      layout: {
+        name: "cose",
+        idealEdgeLength: 90,
+        nodeOverlap: 20,
+        refresh: 20,
+        fit: true,
+        padding: 40,
+        randomize: false,
+        componentSpacing: 100,
+        nodeRepulsion: 400000,
+        edgeElasticity: 100,
+        nestingFactor: 5,
+        gravity: 80,
+        numIter: 1000,
+        animate: true,
+        animationDuration: 600,
+      } as cytoscape.LayoutOptions,
+    });
+
+    cy.on("tap", "node", (evt) => {
+      const n = evt.target;
+      setSelectedNode(n.data());
+    });
+
+    cy.on("tap", (evt) => {
+      if (evt.target === cy) setSelectedNode(null);
+    });
+
+    cyRef.current = cy;
+
+    return () => {
+      cy.destroy();
+      cyRef.current = null;
+    };
+  }, [data]);
+
+  const zoomIn = () => cyRef.current?.zoom({ level: cyRef.current.zoom() * 1.2, renderedPosition: { x: 0, y: 0 } });
+  const zoomOut = () => cyRef.current?.zoom({ level: cyRef.current.zoom() * 0.8, renderedPosition: { x: 0, y: 0 } });
+  const fitView = () => cyRef.current?.fit(undefined, 40);
+
+  const edges = data?.edges.map((e) => e.data) ?? [];
+  const nodes = data?.nodes.map((n) => n.data) ?? [];
+  const nodeMap = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+  const selectedConnections = selectedNode
+    ? edges
+        .filter((e) => e.source === selectedNode.id || e.target === selectedNode.id)
+        .sort((a, b) => b.weight - a.weight)
+        .slice(0, 8)
+    : [];
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-surface">
-      {/* Graph Area */}
+    <div className="flex-1 flex overflow-hidden bg-surface" style={{ minHeight: 640 }}>
       <div className="flex-1 relative overflow-hidden bg-background">
-        <svg width="100%" height="100%" viewBox="0 0 740 500">
-          <defs>
-            <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#f8fafc" />
-              <stop offset="100%" stopColor="#f1f5f9" />
-            </radialGradient>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#bgGrad)" />
+        {/* Search bar */}
+        <form onSubmit={handleSearch} className="absolute top-4 right-4 z-20 flex gap-2">
+          <input
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="Search a topic…"
+            className="w-56 bg-surface border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : "Build graph"}
+          </button>
+        </form>
 
-          {/* Grid pattern */}
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="1" fill="#cbd5e1" opacity="0.5" />
-          </pattern>
-          <rect width="100%" height="100%" fill="url(#grid)" />
+        {/* Zoom controls */}
+        <div className="absolute top-4 left-4 flex bg-surface border border-border-light rounded-lg shadow-sm z-20">
+          <button onClick={zoomIn} className="p-2 text-text-muted hover:text-foreground hover:bg-surface-hover rounded-l-lg border-r border-border-light">
+            <ZoomIn size={16} />
+          </button>
+          <button onClick={zoomOut} className="p-2 text-text-muted hover:text-foreground hover:bg-surface-hover border-r border-border-light">
+            <ZoomOut size={16} />
+          </button>
+          <button onClick={fitView} className="p-2 text-text-muted hover:text-foreground hover:bg-surface-hover rounded-r-lg">
+            <Maximize2 size={16} />
+          </button>
+        </div>
 
-          {/* Edges */}
-          {edges.map(([a, b, conf], i) => {
-            const na = nodeMap[a];
-            const nb = nodeMap[b];
-            if (!na || !nb) return null;
-            return (
-              <line 
-                key={i} 
-                x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
-                stroke={conf > 0.85 ? "#94a3b8" : "#cbd5e1"}
-                strokeWidth={conf > 0.85 ? 2 : 1}
-                strokeDasharray={conf < 0.8 ? "4 4" : "none"}
-                opacity={0.6}
-              />
-            );
-          })}
-
-          {/* Nodes */}
-          {nodes.map(node => (
-            <g 
-              key={node.id} 
-              onMouseEnter={() => setHoveredNode(node.id)} 
-              onMouseLeave={() => setHoveredNode(null)} 
-              className="cursor-pointer transition-transform duration-200"
-              style={{ transformOrigin: `${node.x}px ${node.y}px`, transform: hoveredNode === node.id ? 'scale(1.1)' : 'scale(1)' }}
-            >
-              {/* Outer halo */}
-              <circle cx={node.x} cy={node.y} r={node.r + 8} fill={node.color} opacity={hoveredNode === node.id ? 0.2 : 0.1} />
-              {/* Main circle */}
-              <circle cx={node.x} cy={node.y} r={node.r} fill="#ffffff" stroke={node.color} strokeWidth="3" />
-              {/* Center dot */}
-              <circle cx={node.x} cy={node.y} r={node.r - 8} fill={node.color} opacity={0.8} />
-              
-              <text x={node.x} y={node.y + node.r + 16} textAnchor="middle" fontSize="12" fill="#475569" fontWeight="500">
-                {node.id}
-              </text>
-            </g>
-          ))}
-          
-          {/* Tooltip */}
-          {hoveredNode && (() => {
-            const n = nodeMap[hoveredNode];
-            return (
-              <g pointerEvents="none">
-                <rect x={n.x - 50} y={n.y - n.r - 40} width={100} height={28} rx={6} fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.1))" />
-                <text x={n.x} y={n.y - n.r - 26} textAnchor="middle" fontSize="11" fill="#0f172a" fontWeight="bold">{n.id}</text>
-                <text x={n.x} y={n.y - n.r - 16} textAnchor="middle" fontSize="9" fill="#64748b" className="uppercase tracking-wider">{n.type}</text>
-              </g>
-            );
-          })()}
-        </svg>
-
-        {/* Legend Overlay */}
-        <div className="absolute bottom-6 left-6 bg-surface/90 backdrop-blur-sm border border-border-light rounded-xl p-4 shadow-sm">
-          <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-3">Entity Types</div>
-          <div className="flex flex-col gap-2">
-            {typeLabels.map(t => (
-              <div key={t} className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full border-2 ${typeColors[t].split(' ')[2]} ${typeColors[t].split(' ')[0].replace('bg-', 'bg-').replace('-500', '-100')} bg-opacity-20`} />
-                <span className="text-xs text-text-muted capitalize font-medium">{t}</span>
-              </div>
-            ))}
+        {!query && !data && !loading && (
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-text-muted">
+            Enter a topic above to build its knowledge graph.
           </div>
-        </div>
+        )}
+        {loading && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-text-muted bg-background/60 z-10">
+            <Loader2 size={24} className="animate-spin" />
+            Building graph for "{query}"…
+          </div>
+        )}
+        {error && !loading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-4 max-w-md">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              {error}
+            </div>
+          </div>
+        )}
+        {warning && !loading && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-amber-50 border border-amber-200 text-amber-700 text-xs rounded-lg px-3 py-2 max-w-lg">
+            {warning}
+          </div>
+        )}
 
-        {/* Controls Overlay */}
-        <div className="absolute top-6 left-6 flex bg-surface border border-border-light rounded-lg shadow-sm">
-          <button className="p-2 text-text-muted hover:text-foreground hover:bg-surface-hover rounded-l-lg border-r border-border-light"><ZoomIn size={16} /></button>
-          <button className="p-2 text-text-muted hover:text-foreground hover:bg-surface-hover rounded-r-lg"><ZoomOut size={16} /></button>
-        </div>
+        {/* Cytoscape mounts here — always present in the DOM so cy has a container to bind to */}
+        <div ref={containerRef} className="w-full h-full" style={{ minHeight: 640 }} />
+
+        {/* Legend */}
+        {nodes.length > 0 && (
+          <div className="absolute bottom-4 left-4 bg-surface/90 backdrop-blur-sm border border-border-light rounded-xl p-3 shadow-sm max-w-[220px] z-10">
+            <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">Relation Types</div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+              {Object.entries(RELATION_COLORS).map(([rel, color]) => (
+                <div key={rel} className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-0.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                  <span className="text-[9px] text-text-muted capitalize leading-tight">{rel.replace(/_/g, " ")}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Right Sidebar */}
-      <div className="w-[320px] border-l border-border-light bg-surface p-6 overflow-auto flex flex-col gap-8 shrink-0 z-10">
+      <div className="w-[300px] border-l border-border-light bg-surface p-5 overflow-auto flex flex-col gap-6 shrink-0 z-10">
         <div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-foreground">Selected Node</h3>
-            <Badge color="primary">Gene</Badge>
+            {selectedNode && <Badge>{selectedNode.is_query ? "Query" : "Concept"}</Badge>}
           </div>
-          <div className="bg-primary-light border border-primary/20 rounded-xl p-4">
-            <div className="text-2xl font-bold text-primary mb-4">PCSK9</div>
-            <div className="flex flex-col gap-3">
-              <div className="flex justify-between items-center pb-2 border-b border-primary/10">
-                <span className="text-xs text-text-muted font-medium">Connections</span>
-                <span className="text-sm font-bold text-foreground">8 direct</span>
-              </div>
-              <div className="flex justify-between items-center pb-2 border-b border-primary/10">
-                <span className="text-xs text-text-muted font-medium">Literature Base</span>
-                <span className="text-sm font-bold text-foreground">4,217 papers</span>
-              </div>
-              <div className="flex justify-between items-center pb-2 border-b border-primary/10">
-                <span className="text-xs text-text-muted font-medium">Network Centrality</span>
-                <span className="text-sm font-bold text-success">0.97</span>
+
+          {!selectedNode ? (
+            <div className="text-xs text-text-muted p-4 border border-dashed border-border-light rounded-xl">
+              Click a node to see its details.
+            </div>
+          ) : (
+            <div className="bg-primary-light border border-primary/20 rounded-xl p-4">
+              <div className="text-lg font-bold text-primary mb-3 break-words">{selectedNode.label}</div>
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-between items-center pb-2 border-b border-primary/10">
+                  <span className="text-xs text-text-muted font-medium">Connections</span>
+                  <span className="text-sm font-bold text-foreground">{selectedConnections.length}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-primary/10">
+                  <span className="text-xs text-text-muted font-medium">Papers</span>
+                  <span className="text-sm font-bold text-foreground">
+                    {data?.papers_by_concept[selectedNode.id]?.length ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-primary/10">
+                  <span className="text-xs text-text-muted font-medium">Relevance</span>
+                  <span className="text-sm font-bold text-success">{selectedNode.relevance.toFixed(2)}</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
-        <div>
-          <h3 className="text-sm font-bold text-foreground mb-4">Top Relationships</h3>
-          <div className="flex flex-col gap-4">
-            {[
-              { label: "PCSK9 → Evolocumab", val: 98 },
-              { label: "PCSK9 → LDLR", val: 85 },
-              { label: "LDL-C → ASCVD", val: 89 },
-              { label: "ANGPTL3 → FH", val: 65 }
-            ].map((rel, i) => (
-              <div key={i}>
-                <div className="flex justify-between items-end mb-1">
-                  <span className="text-xs font-medium text-foreground">{rel.label}</span>
-                  <span className={`text-xs font-bold ${rel.val > 85 ? "text-success" : "text-warning"}`}>{rel.val}%</span>
-                </div>
-                <div className="h-1.5 w-full bg-surface-hover rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full rounded-full ${rel.val > 85 ? "bg-success" : "bg-warning"}`} 
-                    style={{ width: `${rel.val}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+        {selectedNode && selectedConnections.length > 0 && (
+          <div>
+            <h3 className="text-sm font-bold text-foreground mb-3">Top Relationships</h3>
+            <div className="flex flex-col gap-3">
+              {selectedConnections.map((rel, i) => {
+                const other = rel.source === selectedNode.id ? rel.target : rel.source;
+                const otherLabel = nodeMap[other]?.label ?? other;
+                const pct = Math.min(100, rel.weight * 20);
+                return (
+                  <div key={i}>
+                    <div className="text-xs font-medium text-foreground truncate mb-1">
+                      {selectedNode.label} → {otherLabel}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 flex-1 bg-surface-hover rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: relationColor(rel.relation) }} />
+                      </div>
+                      <span className="text-[10px] text-text-muted capitalize whitespace-nowrap">
+                        {rel.relation.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="bg-accent-light border border-accent/20 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles size={14} className="text-accent" />
-            <span className="text-xs font-bold text-accent uppercase tracking-wider">AI Insight</span>
+        {selectedNode && (data?.papers_by_concept[selectedNode.id]?.length ?? 0) > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles size={14} className="text-accent" />
+              <h3 className="text-sm font-bold text-foreground">Supporting Papers</h3>
+            </div>
+            <div className="flex flex-col gap-2">
+              {data!.papers_by_concept[selectedNode.id].slice(0, 5).map((p) => (
+                <div key={p.id} className="text-xs bg-surface-hover rounded-lg p-2">
+                  <div className="font-medium text-foreground line-clamp-2">{p.title}</div>
+                  <div className="text-text-dim mt-1">{p.journal}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          <p className="text-xs text-foreground leading-relaxed">
-            Missing edge detected: <span className="font-semibold">PCSK9 × NLRP3 inflammasome pathway</span> — 12 papers support an indirect link. Add relationship to graph?
-          </p>
-        </div>
+        )}
       </div>
     </div>
   );
