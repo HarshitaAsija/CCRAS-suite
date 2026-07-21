@@ -1,0 +1,88 @@
+"use client";
+import React, { useState } from "react";
+import { Badge } from "../../shared/Badge";
+import { Button } from "../../shared/Button";
+import {
+  Search,
+  Folder,
+  MessageSquare,
+  ArrowRight,
+} from "lucide-react";
+import SearchPage from "./app/search/page";
+import LibraryPage from "./app/library/page";
+import RagPage from "./app/rag/page";
+
+export function RecapLibrary({ setActivePage }: { setActivePage: (page: string) => void }) {
+  const [activeTab, setActiveTab] = useState("search");
+
+  const handoffToBrahma = () => {
+    // In a real implementation, we would pass the active collection data
+    // For now, we'll just pass a placeholder
+    localStorage.setItem(
+      "brahma_handoff_collection",
+      JSON.stringify({
+        id: "placeholder",
+        hypothesisSeed: "Selected collection from Recap Library",
+        paperCount: 0,
+      })
+    );
+    setActivePage("design");
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-background overflow-hidden animate-in fade-in">
+      {/* Header */}
+      <div className="p-6 border-b border-border-light bg-surface flex items-center justify-between flex-shrink-0">
+        <div>
+          <Badge color="success" className="mb-2">RECAP-KRITA</Badge>
+          <h1 className="text-2xl font-black text-foreground">Library</h1>
+        </div>
+
+        <Button className="bg-accent hover:bg-accent/90 text-white shadow-md shadow-accent/20" onClick={handoffToBrahma}>
+          Design Study from Collection <ArrowRight size={16} className="ml-2" />
+        </Button>
+      </div>
+
+      {/* Tabs */}
+      <div className="px-6 border-b border-border-light flex gap-6 bg-surface flex-shrink-0">
+        <button
+          onClick={() => setActiveTab("search")}
+          className={`flex items-center gap-2 py-4 border-b-2 font-semibold text-sm transition-colors ${
+            activeTab === "search"
+              ? "border-success text-success"
+              : "border-transparent text-text-dim hover:text-text-muted"
+          }`}
+        >
+          <Search size={16} /> Literature Search
+        </button>
+        <button
+          onClick={() => setActiveTab("library")}
+          className={`flex items-center gap-2 py-4 border-b-2 font-semibold text-sm transition-colors ${
+            activeTab === "library"
+              ? "border-success text-success"
+              : "border-transparent text-text-dim hover:text-text-muted"
+          }`}
+        >
+          <Folder size={16} /> Evidence Collections
+        </button>
+        <button
+          onClick={() => setActiveTab("rag")}
+          className={`flex items-center gap-2 py-4 border-b-2 font-semibold text-sm transition-colors ${
+            activeTab === "rag"
+              ? "border-success text-success"
+              : "border-transparent text-text-dim hover:text-text-muted"
+          }`}
+        >
+          <MessageSquare size={16} /> RAG Q&A
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto bg-surface-hover">
+        {activeTab === "search" && <SearchPage />}
+        {activeTab === "library" && <LibraryPage />}
+        {activeTab === "rag" && <RagPage />}
+      </div>
+    </div>
+  );
+}
