@@ -1,5 +1,4 @@
 
-
 """
 RishiAI Knowledge Graph Pipeline — Keyword-First Approach
 1. Search keywords table for query term (exact + fuzzy)
@@ -25,12 +24,6 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity as cos_sim
 from sklearn.feature_extraction.text import TfidfVectorizer
-
-
-import logging
-logging.getLogger("neo4j").setLevel(logging.WARNING)
-logging.getLogger("neo4j.io").setLevel(logging.WARNING)
-
 
 load_dotenv()
 
@@ -467,7 +460,7 @@ def normalize_concepts_with_llm(query: str, keywords: list[str]) -> dict:
     2. Return {raw_keyword: canonical_concept} mapping
     3. Only keep concepts relevant to the query
     """
-    unique_kws = list(dict.fromkeys([k.lower().strip() for k in keywords if k]))[:100]
+    unique_kws = list(dict.fromkeys([k.lower().strip() for k in keywords if k]))[:200]
     prompt = _build_normalization_prompt(query, unique_kws)
 
     if LLM_PROVIDER == "ollama":

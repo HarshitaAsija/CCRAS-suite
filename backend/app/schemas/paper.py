@@ -18,14 +18,14 @@ class PaperRead(BaseModel):
 
     id: int
     title: str
-    abstract: str
+    abstract: Optional[str] = ""
     full_text: Optional[str] = None
     authors: Any
-    journal: str
-    publication_date: date
+    journal: Optional[str] = ""
+    publication_date: Optional[date] = None
     doi: Optional[str] = None
     pmid: Optional[str] = None
-    url: str
+    url: Optional[str] = ""
     source: Optional[str] = "pubmed"
     open_access: Optional[str] = "false"
     created_at: Optional[datetime] = None

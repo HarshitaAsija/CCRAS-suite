@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        ports: [5432:5432]
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:6
+        ports: [6379:6379]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      # Set environment variables for the services
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+      REDIS_URL: redis://localhost:6379
+      # Add any other environment variables needed for tests
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff linter
+        run: |
+          cd backend
+          ruff check .
+
+      - name: Install eslint (if not already installed via npm ci)
+        # We assume eslint is installed via frontend/package.json, but we can install globally if needed
+        # However, we'll just run the local eslint via npx
+        run: |
+          cd frontend
+          npx eslint --version || npm install eslint
+
+      - name: Run eslint
+        run: |
+          cd frontend
+          npx eslint . --ext .js,.jsx,.ts,.tsx
+
+      - name: Run tests with pytest
+        run: |
+          cd backend
+          pytest

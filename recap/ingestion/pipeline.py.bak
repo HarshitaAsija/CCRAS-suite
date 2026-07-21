@@ -1,0 +1,172 @@
+import logging
+from datetime import datetime
+from sqlalchemy.orm import Session
+from rapidfuzz import fuzz
+from keybert import KeyBERT
+from typing import Optional, List, Dict, Any
+
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from app.database import get_db
+from app.models import Paper, Author, Keyword
+from ingestion.models import RawPaper
+from ingestion.batch_ingestion import batch_ingest
+
+logger = logging.getLogger(__name__)
+kw_model = KeyBERT()
+
+router = APIRouter(prefix="/api/ingest", tags=["ingest"])
+
+def process_and_store(paper: RawPaper, db: Session):
+
+    # Step 1 - Check DOI duplicate
+    if paper.doi:
+        exists = db.query(Paper).filter(Paper.doi == paper.doi).first()
+        if exists:
+            logger.info(f"Skipping duplicate DOI: {paper.doi}")
+            return None
+
+    # Step 2 - Check title similarity
+    all_titles = db.query(Paper.title).all()
+    for (existing_title,) in all_titles:
+        similarity = fuzz.ratio(paper.title, existing_title) / 100
+        if similarity > 0.95:
+            logger.info(f"Skipping similar title: {paper.title}")
+            return None
+
+    # Step 3 - Extract keywords
+    text = f"{paper.title} {paper.abstract}"
+    keywords = kw_model.extract_keywords(text, top_n=10)
+
+    # Step 4 - Store paper
+    db_paper = Paper(
+        doi=paper.doi,
+        title=paper.title,
+        abstract=paper.abstract,
+        full_text=paper.full_text,
+        source=paper.source,
+        published_date=paper.published_date
+    )
+    db.add(db_paper)
+    db.flush()
+
+    # Step 5 - Store authors
+    for author in paper.authors:
+        name = author if isinstance(author, str) else author.name
+        db_author = db.query(Author).filter(Author.name == name).first()
+        if not db_author:
+            db_author = Author(name=name)
+            db.add(db_author)
+            db.flush()
+        db_paper.authors.append(db_author)
+
+    # Step 6 - Store keywords
+    for kw, score in keywords:
+        keyword = Keyword(
+            paper_id=db_paper.id,
+            keyword=kw,
+            score=int(score * 100)
+        )
+        db.add(keyword)
+
+    db.commit()
+    logger.info(f"Stored paper: {paper.title}")
+    return db_paper.id
+
+
+def save_papers(papers: list, db: Session) -> int:
+    """
+    Save a list of paper dictionaries from Khushi's scraper to the database.
+
+    Args:
+        papers: List of paper dictionaries (as returned by the scrapers in ayurveda-scraper).
+        db: SQLAlchemy session.
+
+    Returns:
+        int: Number of papers saved (i.e., not skipped as duplicates).
+    """
+    saved_count = 0
+
+    def _parse_published_at(date_str: Optional[str]) -> Optional[datetime]:
+        if not date_str:
+            return None
+        try:
+            parts = date_str.split('-')
+            if len(parts) == 2:
+                year_str, month_str = parts
+                year = int(year_str)
+                try:
+                    month = int(month_str)
+                except ValueError:
+                    # Try parsing as month name (e.g., 'May')
+                    month = datetime.strptime(month_str, '%b').month
+                return datetime(year, month, 1)
+            elif len(parts) == 3:
+                # Assume YYYY-MM-DD
+                return datetime.strptime(date_str, '%Y-%m-%d')
+            else:
+                return None
+        except Exception:
+            return None
+
+    for paper_dict in papers:
+        try:
+            # Extract and map fields
+            title = paper_dict.get('title', '')
+            abstract = paper_dict.get('abstract', '')
+            authors = paper_dict.get('authors', [])  # list of strings
+            source = paper_dict.get('source', '')
+            published_at = paper_dict.get('published_at')
+            published_date = _parse_published_at(published_at)
+            doi = paper_dict.get('doi')
+            if doi == "":
+                doi = None
+            full_text = paper_dict.get('full_text')
+            keywords = paper_dict.get('keywords', [])
+            journal = None  # not in scraper output
+            references = paper_dict.get('paper_references', [])  # scraper has 'paper_references'
+            citations = paper_dict.get('citations', [])  # new field in RawPaper
+
+            # Create RawPaper object
+            raw_paper = RawPaper(
+                title=title,
+                abstract=abstract,
+                authors=authors,
+                source=source,
+                published_date=published_date,
+                doi=doi,
+                pmid=None,
+                arxiv_id=None,
+                full_text=full_text,
+                pdf_url=None,
+                keywords=keywords,
+                journal=journal,
+                references=references,
+                citations=citations
+            )
+
+            # Process and store using existing function
+            result = process_and_store(raw_paper, db)
+            if result is not None:
+                saved_count += 1
+        except Exception as e:
+            # Log the error and continue with the next paper
+            logger.error(f"Error processing paper from scraper: {e}")
+            continue
+
+    return saved_count
+
+
+@router.post("/batch")
+async def trigger_batch_ingest(
+    background_tasks: BackgroundTasks,
+    query: str = "ayurvedic medicine",
+    sources: List[str] = ["pubmed", "arxiv"],
+    max_per_source: int = 10,
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger a batch ingestion process.
+    """
+    # Add task to background
+    background_tasks.add_task(batch_ingest, query, sources, max_per_source, db)
+    return {"message": "Batch ingestion started in background"}

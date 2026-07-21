@@ -21,8 +21,6 @@ async def get_ontology_graph():
         result = onto_pipeline.neo4j.get_ontology_graph_for_viz()
         if result["nodes"]:
             return result
-        # Nothing written to Neo4j yet — build it once, then serve from Neo4j
-        # on subsequent calls.
         return onto_pipeline.run()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

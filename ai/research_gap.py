@@ -56,7 +56,7 @@ DOI_COLUMN_CANDIDATES = ["doi"]
 # ─────────────────────────────────────────────
 TOTAL_PAPERS = 40
 BATCH_SIZE   = 4
-MAX_FETCH_FOR_CLUSTERING = 300
+MAX_FETCH_FOR_CLUSTERING = 100
  
 # NEW: how many words of the abstract to keep for the lightweight, non-LLM
 # "papers" summary block (title + link + snippet) added to the output.
@@ -835,6 +835,8 @@ def _call_embed_endpoint(url, text, model):
 def get_embedding(text, model=OLLAMA_EMBED_MODEL):
     if not text:
         return None
+    if len(text) > 4000:
+        text = text[:4000]
     try:
         return _call_embed_endpoint(OLLAMA_EMBED_URL, text, model)
     except requests.HTTPError as e:
