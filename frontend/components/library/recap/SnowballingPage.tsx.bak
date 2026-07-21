@@ -4,22 +4,22 @@
 // File: /app/snowballing/page.tsx
 
 "use client";
-import { normalizeAuthors } from "./lib/normalize";
+import { normalizeAuthors } from "../../lib/normalize";
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader } from "./components/ui/card";
-import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
+import { Card, CardContent, CardHeader } from "../../components/ui/card";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./components/ui/select";
-import { ScrollArea } from "./components/ui/scroll-area";
-import { Separator } from "./components/ui/separator";
+} from "../../components/ui/select";
+import { ScrollArea } from "../../components/ui/scroll-area";
+import { Separator } from "../../components/ui/separator";
 import { Search, GitBranch, ArrowUp, ArrowDown } from "lucide-react";
-import { PaperCard } from "./components/ui/papercard";
+import { PaperCard } from "../../components/ui/papercard";
 import {
   searchForSnowballing,
   getSnowballingResults,
@@ -28,10 +28,10 @@ import {
   getSnowballFrontier,
   getSnowballRelated,
   getSnowballGraph,
-} from "./lib/api";
-import { Paper } from "./types/paper";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { Badge } from "./components/ui/badge";
+} from "../../lib/api";
+import { Paper } from "../../types/paper";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { Badge } from "../../components/ui/badge";
 import dynamic from "next/dynamic";
 
 function authorName(a: any): string {
