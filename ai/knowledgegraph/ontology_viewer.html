@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RishiAI — Ontology Graph</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+header {
+  padding: 12px 24px; background: #1a1d27;
+  border-bottom: 1px solid #2d3148;
+  display: flex; align-items: center; gap: 16px; flex-shrink: 0;
+}
+header h1 { font-size: 1rem; font-weight: 700; color: #a78bfa; }
+header p  { font-size: 0.8rem; color: #4b5563; }
+#build-btn {
+  margin-left: auto; padding: 7px 16px;
+  background: #7c3aed; color: white; border: none;
+  border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+}
+#build-btn:hover { background: #6d28d9; }
+#build-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+#nav-btn {
+  padding: 7px 16px; background: #1e1b4b; color: #a78bfa;
+  border: 1px solid #3730a3; border-radius: 8px; cursor: pointer; font-size: 0.85rem;
+  text-decoration: none;
+}
+#nav-btn:hover { background: #2d1b69; }
+
+#main { display: flex; flex: 1; overflow: hidden; }
+#cy { flex: 1; position: relative; }
+
+/* Loading */
+#overlay {
+  display: none; position: absolute; inset: 0;
+  background: rgba(15,17,23,0.9);
+  align-items: center; justify-content: center; flex-direction: column; gap: 14px; z-index: 20;
+}
+#overlay.show { display: flex; }
+.spinner { width: 40px; height: 40px; border: 3px solid #2d3148; border-top-color: #7c3aed; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#overlay-msg { color: #94a3b8; font-size: 0.9rem; }
+#overlay-sub { color: #4b5563; font-size: 0.78rem; }
+
+/* Details panel */
+#details {
+  width: 320px; background: #1a1d27;
+  border-left: 1px solid #2d3148;
+  display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden;
+}
+#details-header { padding: 16px; border-bottom: 1px solid #2d3148; flex-shrink: 0; }
+#details-header h2 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: #7c3aed; margin-bottom: 8px; }
+#onto-title { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; }
+#onto-meta { font-size: 0.8rem; color: #64748b; margin-top: 4px; line-height: 1.6; }
+#details-body { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+
+.section-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #4b5563; margin-bottom: 8px; }
+
+/* Keyword chips */
+.kw-chip {
+  display: inline-block; background: #1e1b4b; color: #c4b5fd;
+  border-radius: 4px; padding: 3px 8px; font-size: 0.72rem; margin: 2px;
+}
+
+/* Connected ontologies */
+.onto-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; background: #0f1117;
+  border: 1px solid #2d3148; border-radius: 8px; margin-bottom: 6px;
+  cursor: pointer;
+}
+.onto-link:hover { border-color: #4b5563; }
+.onto-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.onto-link-name { font-size: 0.82rem; color: #e2e8f0; flex: 1; }
+.onto-link-weight { font-size: 0.75rem; color: #4b5563; }
+
+/* Papers */
+.paper-card { background: #0f1117; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; }
+.paper-card .ptitle { font-size: 0.8rem; font-weight: 500; color: #c4b5fd; line-height: 1.4; margin-bottom: 3px; }
+.paper-card .pmeta  { font-size: 0.7rem; color: #64748b; }
+.paper-card a { color: #7c3aed; font-size: 0.7rem; text-decoration: none; }
+
+/* Legend */
+#legend {
+  position: absolute; bottom: 20px; left: 20px;
+  background: rgba(26,29,39,0.95); border: 1px solid #2d3148;
+  border-radius: 10px; padding: 12px 16px; z-index: 5;
+}
+#legend h3 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #4b5563; margin-bottom: 8px; }
+.legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 0.78rem; color: #94a3b8; }
+.legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+#status-bar { padding: 5px 24px; background: #13151f; border-top: 1px solid #2d3148; font-size: 0.73rem; color: #374151; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🔬 RishiAI — Ontology Knowledge Graph</h1>
+    <p>Whole database classified into 8 research ontologies</p>
+  </div>
+  <a href="frontend_demo.html" id="nav-btn">← Query Graph</a>
+  <button id="build-btn" onclick="buildOntology()">🔄 Rebuild Graph</button>
+</header>
+
+<div id="main">
+  <div id="cy">
+    <div id="overlay">
+      <div class="spinner"></div>
+      <p id="overlay-msg">Loading ontology graph…</p>
+      <p id="overlay-sub"></p>
+    </div>
+
+    <!-- Legend -->
+    <div id="legend">
+      <h3>Ontologies</h3>
+      <div id="legend-items"></div>
+    </div>
+  </div>
+
+  <div id="details">
+    <div id="details-header">
+      <h2>Ontology Details</h2>
+      <div id="onto-title">Click an ontology node</div>
+      <div id="onto-meta">Select a category to explore its keywords and papers</div>
+    </div>
+    <div id="details-body">
+      <p style="color:#374151;font-size:0.82rem">The graph shows how different research domains co-occur across papers in the database.</p>
+    </div>
+  </div>
+</div>
+<div id="status-bar">Loading…</div>
+
+<script>
+const API = "http://localhost:8000";
+const ONTOLOGY_META = {
+  BIO:    { emoji: "🧬", color: "#34d399" },
+  MED:    { emoji: "⚕️",  color: "#60a5fa" },
+  CHEM:   { emoji: "🧪", color: "#f59e0b" },
+  MICRO:  { emoji: "🦠", color: "#f87171" },
+  COMP:   { emoji: "🤖", color: "#a78bfa" },
+  EPIO:   { emoji: "📊", color: "#38bdf8" },
+  ETHNO:  { emoji: "🌿", color: "#4ade80" },
+  PHYSIO: { emoji: "🫀", color: "#fb923c" },
+};
+
+let cy = null;
+let graphData = null;
+
+function status(msg) { document.getElementById("status-bar").textContent = msg; }
+function setOverlay(show, msg = "", sub = "") {
+  document.getElementById("overlay").classList.toggle("show", show);
+  if (msg) document.getElementById("overlay-msg").textContent = msg;
+  if (sub !== undefined) document.getElementById("overlay-sub").textContent = sub;
+}
+
+// ── Build Legend ─────────────────────────────────────────────────────
+function buildLegend(nodes) {
+  const el = document.getElementById("legend-items");
+  el.innerHTML = nodes.map(n => `
+    <div class="legend-item">
+      <div class="legend-dot" style="background:${n.data.color}"></div>
+      ${n.data.label}
+    </div>
+  `).join("");
+}
+
+// ── Render Graph ─────────────────────────────────────────────────────
+function renderGraph(data) {
+  if (cy) cy.destroy();
+
+  const maxWeight = Math.max(...data.edges.map(e => e.data.weight), 1);
+  const maxPapers = Math.max(...data.nodes.map(n => n.data.paper_count), 1);
+
+  cy = cytoscape({
+    container: document.getElementById("cy"),
+    elements: [...data.nodes, ...data.edges],
+    style: [
+      {
+        selector: "node",
+        style: {
+          label: "data(label)",
+          "background-color": "data(color)",
+          width:  ele => Math.max(60, Math.min(130, 50 + (ele.data("paper_count") / maxPapers) * 100)),
+          height: ele => Math.max(60, Math.min(130, 50 + (ele.data("paper_count") / maxPapers) * 100)),
+          color: "#ffffff",
+          "font-size": 12,
+          "font-weight": "bold",
+          "text-valign": "center",
+          "text-halign": "center",
+          "text-wrap": "wrap",
+          "text-max-width": 90,
+          "border-width": 3,
+          "border-color": ele => ele.data("color"),
+          "border-opacity": 0.5,
+        }
+      },
+      {
+        selector: "node:selected",
+        style: { "border-width": 5, "border-opacity": 1 }
+      },
+      {
+        selector: "edge",
+        style: {
+          width: ele => Math.max(2, Math.min(18, 2 + (ele.data("weight") / maxWeight) * 16)),
+          "line-color": "#2d3148",
+          opacity: 0.7,
+          "curve-style": "bezier",
+          label: "data(weight)",
+          "font-size": 10,
+          color: "#64748b",
+          "text-background-color": "#0f1117",
+          "text-background-opacity": 0.8,
+          "text-background-padding": "2px",
+        }
+      },
+      {
+        selector: "edge:selected",
+        style: { "line-color": "#f59e0b", opacity: 1 }
+      },
+      { selector: ".faded", style: { opacity: 0.1 } },
+      { selector: ".lit",   style: { opacity: 1 } },
+    ],
+    layout: {
+      name: "cose",
+      animate: true,
+      animationDuration: 800,
+      nodeRepulsion: () => 25000,
+      idealEdgeLength: () => 200,
+      edgeElasticity: () => 60,
+      gravity: 0.3,
+      numIter: 1000,
+      fit: true,
+      padding: 60,
+    }
+  });
+
+  // Click ontology node
+  cy.on("tap", "node", evt => {
+    const node = evt.target;
+    cy.elements().addClass("faded").removeClass("lit");
+    node.closedNeighborhood().removeClass("faded").addClass("lit");
+    showDetails(node.data("code"), data);
+  });
+
+  // Click background
+  cy.on("tap", evt => {
+    if (evt.target !== cy) return;
+    cy.elements().removeClass("faded lit");
+    resetDetails();
+  });
+
+  buildLegend(data.nodes);
+}
+
+// ── Details Panel ────────────────────────────────────────────────────
+function showDetails(code, data) {
+  const node = data.nodes.find(n => n.data.code === code);
+  if (!node) return;
+  const d = node.data;
+  const meta = ONTOLOGY_META[code] || {};
+
+  document.getElementById("onto-title").textContent = d.label;
+  document.getElementById("onto-meta").innerHTML = `
+    <strong>${d.paper_count}</strong> papers ·
+    <strong>${d.keyword_count}</strong> keywords
+  `;
+
+  // Connected ontologies
+  const connectedEdges = data.edges.filter(e =>
+    e.data.source === code || e.data.target === code
+  ).sort((a, b) => b.data.weight - a.data.weight);
+
+  const connectedCodes = connectedEdges.map(e =>
+    e.data.source === code ? e.data.target : e.data.source
+  );
+
+  // Top keywords
+  const topKws = (data.keywords_by_ontology || {})[code] || d.top_keywords || [];
+
+  // Papers
+  const papers = d.sample_papers || [];
+
+  document.getElementById("details-body").innerHTML = `
+    ${connectedEdges.length > 0 ? `
+    <div>
+      <div class="section-title">Co-occurs with</div>
+      ${connectedEdges.map((e, i) => {
+        const otherCode = e.data.source === code ? e.data.target : e.data.source;
+        const otherNode = data.nodes.find(n => n.data.code === otherCode);
+        const otherMeta = ONTOLOGY_META[otherCode] || {};
+        return `
+        <div class="onto-link" onclick="focusNode('${otherCode}', graphData)">
+          <div class="onto-dot" style="background:${otherNode?.data.color || '#666'}"></div>
+          <span class="onto-link-name">${otherNode?.data.label || otherCode}</span>
+          <span class="onto-link-weight">${e.data.weight} papers</span>
+        </div>`;
+      }).join("")}
+    </div>` : ""}
+
+    ${topKws.length > 0 ? `
+    <div>
+      <div class="section-title">Sample Keywords (${d.keyword_count} total)</div>
+      <div>${topKws.map(k => `<span class="kw-chip">${k}</span>`).join("")}</div>
+    </div>` : ""}
+
+    ${papers.length > 0 ? `
+    <div>
+      <div class="section-title">Sample Papers</div>
+      ${papers.slice(0, 6).map(p => `
+        <div class="paper-card">
+          <div class="ptitle">${p.title || "(no title)"}</div>
+          <div class="pmeta">${p.journal || "Unknown journal"}</div>
+          ${p.doi ? `<a href="https://doi.org/${p.doi}" target="_blank">View ↗</a>` : ""}
+        </div>
+      `).join("")}
+    </div>` : ""}
+  `;
+}
+
+function focusNode(code, data) {
+  const node = cy.getElementById(code);
+  if (!node.length) return;
+  cy.animate({ center: { eles: node }, zoom: 1.5 }, { duration: 400 });
+  cy.elements().addClass("faded").removeClass("lit");
+  node.closedNeighborhood().removeClass("faded").addClass("lit");
+  showDetails(code, data);
+}
+
+function resetDetails() {
+  document.getElementById("onto-title").textContent = "Click an ontology node";
+  document.getElementById("onto-meta").textContent = "Select a category to explore";
+  document.getElementById("details-body").innerHTML =
+    `<p style="color:#374151;font-size:0.82rem">The graph shows how different research domains co-occur across papers in the database.</p>`;
+}
+
+// ── Load Graph ───────────────────────────────────────────────────────
+async function loadOntology() {
+  setOverlay(true, "Loading ontology graph…", "Fetching from Neo4j…");
+  try {
+    const res = await fetch(`${API}/ontology`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+
+    if (!data.nodes || data.nodes.length === 0) {
+      setOverlay(true, "No ontology graph found", "Click 'Rebuild Graph' to build it.");
+      status("No graph found — click Rebuild Graph to create it.");
+      return;
+    }
+
+    graphData = data;
+    setOverlay(false);
+    renderGraph(data);
+    status(`Ontology graph: ${data.nodes.length} domains · ${data.edges.length} connections across the full database`);
+  } catch (err) {
+    setOverlay(false);
+    status(`Error: ${err.message}`);
+  }
+}
+
+async function buildOntology() {
+  const btn = document.getElementById("build-btn");
+  btn.disabled = true;
+  setOverlay(true, "Building ontology graph…", "Classifying all keywords with LLM — this may take 1–2 minutes…");
+  status("Running full database ontology classification…");
+  try {
+    const res = await fetch(`${API}/ontology/build`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    graphData = data;
+    setOverlay(false);
+    renderGraph(data);
+    status(`Built! ${data.nodes.length} ontology domains · ${data.edges.length} connections`);
+  } catch (err) {
+    setOverlay(false);
+    status(`Error: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────
+loadOntology();
+</script>
+</body>
+</html>

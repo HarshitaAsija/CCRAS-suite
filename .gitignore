@@ -31,3 +31,10 @@ frontend/.next/
 backend/venv/
 __pycache__/
 *.pyc
+
+.env
+*.pyc
+__pycache__/
+research_gaps_output.json
+research_gaps_debug_raw.txt
+hypothesis_seeds_output.json

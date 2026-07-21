@@ -153,14 +153,18 @@ export function recommendStudyType(pico: ProtocolState['pico']): ProtocolState['
   };
 }
 
-export function recommendStatisticalTest(studyType: string, outcome: string): ProtocolState['statisticalPlan']['aiMetadata'] {
+export function recommendStatisticalTest(studyType: any, outcome: string): ProtocolState['statisticalPlan']['aiMetadata'] {
   let test = "Pending";
   let reason = "";
   
-  if (studyType.includes("RCT")) {
+  const typeStr = typeof studyType === "string" 
+    ? studyType 
+    : (studyType?.recommended || studyType?.value || "");
+
+  if (typeStr.includes("RCT")) {
     test = "ANCOVA (Baseline Adjusted)";
     reason = "ANCOVA is highly recommended for RCTs to adjust for baseline covariates, increasing statistical power compared to standard t-tests.";
-  } else if (studyType.includes("Cohort")) {
+  } else if (typeStr.includes("Cohort")) {
     test = "Cox Proportional Hazards";
     reason = "Ideal for observational cohorts tracking time-to-event outcomes.";
   } else {

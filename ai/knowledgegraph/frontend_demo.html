@@ -1,0 +1,682 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RishiAI — Knowledge Graph</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── TOP BAR ── */
+header {
+  padding: 10px 20px;
+  background: #1a1d27;
+  border-bottom: 1px solid #2d3148;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+header h1 { font-size: 1rem; font-weight: 700; color: #a78bfa; white-space: nowrap; }
+#search-bar { display: flex; gap: 8px; flex: 1; max-width: 460px; }
+#query-input {
+  flex: 1; padding: 7px 14px;
+  border-radius: 8px; border: 1px solid #3b3f5c;
+  background: #0f1117; color: #e2e8f0; font-size: 0.9rem; outline: none;
+}
+#query-input:focus { border-color: #7c3aed; }
+#search-btn {
+  padding: 7px 18px; background: #7c3aed; color: white;
+  border: none; border-radius: 8px; cursor: pointer; font-weight: 600;
+}
+#search-btn:hover { background: #6d28d9; }
+#search-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+#controls { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: #94a3b8; margin-left: auto; }
+#top-n { width: 80px; accent-color: #7c3aed; }
+
+/* ── MAIN LAYOUT: history | graph | details ── */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── HISTORY SIDEBAR ── */
+#history-panel {
+  width: 220px;
+  background: #13151f;
+  border-right: 1px solid #2d3148;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+#history-header {
+  padding: 14px 16px 10px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #4b5563;
+  border-bottom: 1px solid #2d3148;
+  flex-shrink: 0;
+}
+#history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all 0.15s;
+}
+.history-item:hover { background: #1a1d27; }
+.history-item.active {
+  background: #1e1b4b;
+  border-left-color: #7c3aed;
+}
+.history-item .hi-icon { font-size: 0.85rem; flex-shrink: 0; }
+.history-item .hi-info { flex: 1; min-width: 0; }
+.history-item .hi-query {
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+}
+.history-item .hi-meta {
+  font-size: 0.7rem;
+  color: #4b5563;
+  margin-top: 1px;
+}
+.history-item .hi-delete {
+  opacity: 0;
+  font-size: 0.75rem;
+  color: #4b5563;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: opacity 0.15s;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.history-item:hover .hi-delete { opacity: 1; }
+.history-item .hi-delete:hover { color: #f87171; background: #2d1b1b; }
+
+#history-empty {
+  padding: 24px 16px;
+  font-size: 0.8rem;
+  color: #374151;
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* ── GRAPH AREA ── */
+#graph-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+#cy { flex: 1; }
+
+/* Loading overlay */
+#overlay {
+  display: none; position: absolute; inset: 0;
+  background: rgba(15,17,23,0.88);
+  align-items: center; justify-content: center; flex-direction: column; gap: 14px; z-index: 20;
+}
+#overlay.show { display: flex; }
+.spinner { width: 36px; height: 36px; border: 3px solid #2d3148; border-top-color: #7c3aed; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#overlay p { color: #94a3b8; font-size: 0.88rem; }
+
+/* Empty state */
+#empty-state {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+}
+#empty-state .es-icon { font-size: 3rem; opacity: 0.3; }
+#empty-state p { color: #374151; font-size: 0.9rem; }
+
+/* ── DETAILS SIDEBAR ── */
+#details-panel {
+  width: 300px;
+  background: #1a1d27;
+  border-left: 1px solid #2d3148;
+  display: flex; flex-direction: column;
+  flex-shrink: 0; overflow: hidden;
+}
+#details-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid #2d3148;
+  flex-shrink: 0;
+}
+#details-header h2 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: #7c3aed; margin-bottom: 6px; }
+#node-title { font-size: 1rem; font-weight: 600; color: #e2e8f0; }
+#node-meta { font-size: 0.78rem; color: #64748b; margin-top: 4px; line-height: 1.5; }
+#details-body { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+#neighbours-section h3,
+#papers-section h3 {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: #4b5563; margin-bottom: 8px;
+}
+.neighbour-tag {
+  display: inline-block; background: #2d1b69; color: #c4b5fd;
+  border-radius: 4px; padding: 3px 8px; font-size: 0.73rem; margin: 2px; cursor: pointer;
+}
+.neighbour-tag:hover { background: #4c1d95; }
+.paper-card { background: #0f1117; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 12px; }
+.paper-card .ptitle { font-size: 0.8rem; font-weight: 500; color: #c4b5fd; line-height: 1.4; margin-bottom: 4px; }
+.paper-card .pmeta { font-size: 0.7rem; color: #64748b; }
+.paper-card a { color: #7c3aed; text-decoration: none; font-size: 0.7rem; }
+
+/* ── STATUS BAR ── */
+#status-bar {
+  padding: 5px 20px; background: #13151f;
+  border-top: 1px solid #2d3148; font-size: 0.73rem; color: #374151; flex-shrink: 0;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔬 RishiAI</h1>
+  <div id="search-bar">
+    <input id="query-input" type="text" placeholder="Search a topic… e.g. tuberculosis, cancer" />
+    <button id="search-btn" onclick="buildGraph()">Search</button>
+  </div>
+  <div id="controls">
+    <a href="ontology_viewer.html" style="padding:7px 14px;background:#1e1b4b;color:#a78bfa;border:1px solid #3730a3;border-radius:8px;font-size:0.8rem;text-decoration:none;white-space:nowrap">🗺️ Ontology</a>
+    <div style="display:flex;align-items:center;gap:5px;font-size:0.68rem;color:#64748b;border-left:1px solid #2d3148;padding-left:10px;flex-wrap:wrap;max-width:520px">
+      <span style="color:#34d399">■</span>treats/activates/species_of
+      <span style="color:#f87171">■</span>causes/inhibits
+      <span style="color:#fbbf24">■</span>contains/extracted_from
+      <span style="color:#60a5fa">■</span>interacts/uses
+      <span style="color:#a78bfa">■</span>part_of/is_type_of
+      <span style="color:#f472b6">■</span>studied_in/studies
+      <span style="color:#fb923c">■</span>associated/regulates
+      <span style="color:#e879f9">■</span>biomarker
+      <span style="color:#84cc16">■</span>produces
+      <span style="color:#06b6d4">■</span>prevents
+      <span style="color:#374151">■</span>co-occurs
+    </div>
+    <label>Top <strong id="top-n-val">25</strong></label>
+    <input id="top-n" type="range" min="5" max="60" value="25" step="5"
+           oninput="document.getElementById('top-n-val').textContent=this.value; rerenderGraph()">
+  </div>
+</header>
+
+<div id="main">
+
+  <!-- LEFT: Query History -->
+  <div id="history-panel">
+    <div id="history-header">Query History</div>
+    <div id="history-list">
+      <div id="history-empty">
+        🔬<br>Your searches<br>will appear here
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: Graph -->
+  <div id="graph-area">
+    <div id="empty-state">
+      <div class="es-icon">🕸️</div>
+      <p>Enter a query above to build a knowledge graph</p>
+    </div>
+    <div id="cy"></div>
+    <div id="overlay">
+      <div class="spinner"></div>
+      <p id="overlay-msg">Building knowledge graph…</p>
+    </div>
+  </div>
+
+  <!-- RIGHT: Node Details -->
+  <div id="details-panel">
+    <div id="details-header">
+      <h2>Node Details</h2>
+      <div id="node-title">Click a node</div>
+      <div id="node-meta">Select a concept to explore</div>
+    </div>
+    <div id="details-body">
+      <p style="color:#374151;font-size:0.82rem">Run a search and click any node to see supporting papers.</p>
+    </div>
+  </div>
+
+</div>
+<div id="status-bar">Ready</div>
+
+<script>
+const API = "http://localhost:8000";
+
+// ── State ────────────────────────────────────────────────────────────
+let cy = null;
+let activeQuery = null;
+let allData = null;
+let papersByConceptGlobal = {};
+
+// History: [{query, timestamp, nodeCount, edgeCount, data, papers}]
+let history = JSON.parse(localStorage.getItem("rishi_history") || "[]");
+
+// ── Helpers ──────────────────────────────────────────────────────────
+function status(msg) { document.getElementById("status-bar").textContent = msg; }
+function setOverlay(show, msg = "") {
+  const el = document.getElementById("overlay");
+  el.classList.toggle("show", show);
+  if (msg) document.getElementById("overlay-msg").textContent = msg;
+}
+function saveHistory() {
+  // Save without full data (too large for localStorage) — just metadata
+  const slim = history.map(h => ({
+    query: h.query, timestamp: h.timestamp,
+    nodeCount: h.nodeCount, edgeCount: h.edgeCount
+  }));
+  try { localStorage.setItem("rishi_history", JSON.stringify(slim)); } catch(e) {}
+}
+
+// ── History Sidebar ──────────────────────────────────────────────────
+function renderHistory() {
+  const list = document.getElementById("history-list");
+  const empty = document.getElementById("history-empty");
+
+  if (history.length === 0) {
+    empty.style.display = "block";
+    // Remove all items except empty
+    [...list.querySelectorAll(".history-item")].forEach(el => el.remove());
+    return;
+  }
+  empty.style.display = "none";
+
+  // Rebuild list
+  [...list.querySelectorAll(".history-item")].forEach(el => el.remove());
+
+  history.forEach((item, idx) => {
+    const div = document.createElement("div");
+    div.className = "history-item" + (item.query === activeQuery ? " active" : "");
+    div.dataset.idx = idx;
+
+    const time = new Date(item.timestamp);
+    const timeStr = time.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+
+    div.innerHTML = `
+      <span class="hi-icon">🔍</span>
+      <div class="hi-info">
+        <div class="hi-query">${item.query}</div>
+        <div class="hi-meta">${item.nodeCount} nodes · ${timeStr}</div>
+      </div>
+      <span class="hi-delete" title="Remove" onclick="deleteHistory(event, ${idx})">✕</span>
+    `;
+    div.addEventListener("click", () => loadFromHistory(idx));
+    list.appendChild(div);
+  });
+}
+
+function deleteHistory(e, idx) {
+  e.stopPropagation();
+  history.splice(idx, 1);
+  saveHistory();
+  renderHistory();
+  if (history.length === 0) {
+    activeQuery = null;
+    allData = null;
+    if (cy) { cy.destroy(); cy = null; }
+    document.getElementById("empty-state").style.display = "flex";
+    status("Ready");
+  }
+}
+
+function loadFromHistory(idx) {
+  const item = history[idx];
+  if (!item.data) {
+    // Data not in memory — re-fetch from API
+    document.getElementById("query-input").value = item.query;
+    buildGraph(item.query);
+    return;
+  }
+  activeQuery = item.query;
+  allData = item.data;
+  papersByConceptGlobal = item.papers || {};
+  document.getElementById("query-input").value = item.query;
+  document.getElementById("empty-state").style.display = "none";
+  rerenderGraph();
+  renderHistory();
+  status(`"${item.query}" — ${item.nodeCount} concepts, ${item.edgeCount} relationships`);
+}
+
+// ── Graph Rendering ──────────────────────────────────────────────────
+function filterTopN(data, n) {
+  const sorted = [...data.nodes].sort((a, b) => {
+    if (a.data.is_query) return -1;
+    if (b.data.is_query) return 1;
+    return (b.data.relevance || 0) - (a.data.relevance || 0);
+  });
+  const topNodes = sorted.slice(0, n);
+  const topIds = new Set(topNodes.map(n => n.data.id));
+  const topEdges = data.edges.filter(e =>
+    topIds.has(e.data.source) && topIds.has(e.data.target)
+  );
+  return { nodes: topNodes, edges: topEdges };
+}
+
+function rerenderGraph() {
+  if (!allData) return;
+  const n = parseInt(document.getElementById("top-n").value);
+  const filtered = filterTopN(allData, n);
+  renderCytoscape(filtered);
+  status(`"${activeQuery}" → showing top ${n} concepts · ${filtered.edges.length} relationships`);
+}
+
+function renderCytoscape({ nodes, edges }) {
+  if (cy) cy.destroy();
+  cy = cytoscape({
+    container: document.getElementById("cy"),
+    elements: [...nodes, ...edges],
+    style: [
+      {
+        selector: "node",
+        style: {
+          label: "data(label)",
+          "font-size": 11,
+          color: "#e2e8f0",
+          "text-valign": "bottom",
+          "text-margin-y": 5,
+          "text-wrap": "ellipsis",
+          "text-max-width": 90,
+          "text-background-color": "#0f1117",
+          "text-background-opacity": 0.75,
+          "text-background-padding": "2px",
+        }
+      },
+      {
+        selector: "node[?is_query]",
+        style: {
+          "background-color": "#f59e0b",
+          width: 58, height: 58,
+          "font-size": 13, "font-weight": "bold",
+          color: "#fef3c7",
+          "border-width": 3, "border-color": "#fbbf24",
+        }
+      },
+      {
+        selector: "node[!is_query]",
+        style: {
+          "background-color": ele => {
+            const r = ele.data("relevance") || 0;
+            const b = Math.round(100 + r * 155);
+            return `rgb(${Math.round(60+r*40)},${Math.round(20+r*60)},${b})`;
+          },
+          width:  ele => Math.max(20, Math.min(52, 16 + (ele.data("relevance")||0) * 52)),
+          height: ele => Math.max(20, Math.min(52, 16 + (ele.data("relevance")||0) * 52)),
+        }
+      },
+      { selector: "node:selected", style: { "border-width": 3, "border-color": "#f59e0b" } },
+      {
+        selector: "edge",
+        style: {
+          width: ele => {
+            const rel = ele.data("relation") || "co_occurs_with";
+            const isGeneric = rel === "co_occurs_with" || rel === "related_to";
+            return isGeneric ? 1 : Math.max(2, Math.min(6, (ele.data("weight")||1) * 0.5));
+          },
+          "line-color": ele => {
+            const rel = (ele.data("relation") || "co_occurs_with").toLowerCase();
+            const colors = {
+              // Original types
+              "treats":           "#34d399",
+              "causes":           "#f87171",
+              "contains":         "#fbbf24",
+              "interacts_with":   "#60a5fa",
+              "part_of":          "#a78bfa",
+              "studied_in":       "#f472b6",
+              "associated_with":  "#fb923c",
+              "biomarker_of":     "#e879f9",
+              "produces":         "#84cc16",
+              "prevents":         "#06b6d4",
+              // Qwen extra types
+              "is_type_of":       "#a78bfa",
+              "extracted_from":   "#fbbf24",
+              "derived_from":     "#fbbf24",
+              "species_of":       "#34d399",
+              "studies":          "#f472b6",
+              "uses":             "#60a5fa",
+              "has_property":     "#e879f9",
+              "found_in":         "#84cc16",
+              "inhibits":         "#f87171",
+              "activates":        "#34d399",
+              "regulates":        "#fb923c",
+              "expressed_in":     "#06b6d4",
+              // Generic
+              "co_occurs_with":   "#2d3148",
+              "related_to":       "#374151",
+            };
+            return colors[rel] || "#60a5fa";
+          },
+          opacity: ele => {
+            const rel = (ele.data("relation") || "co_occurs_with").toLowerCase();
+            return (rel === "co_occurs_with" || rel === "related_to") ? 0.2 : 0.95;
+          },
+          "curve-style": "bezier",
+          label: ele => {
+            const rel = (ele.data("relation") || "").toLowerCase();
+            if (rel === "co_occurs_with" || rel === "related_to" || !rel) return "";
+            return rel.replace(/_/g, " ");
+          },
+          "font-size": 10,
+          "font-weight": "bold",
+          color: ele => {
+            const rel = (ele.data("relation") || "co_occurs_with").toLowerCase();
+            const colors = {
+              "treats":           "#34d399",
+              "causes":           "#f87171",
+              "contains":         "#fbbf24",
+              "interacts_with":   "#60a5fa",
+              "part_of":         "#a78bfa",
+              "studied_in":       "#f472b6",
+              "associated_with":  "#fb923c",
+              "biomarker_of":     "#e879f9",
+              "produces":         "#84cc16",
+              "prevents":         "#06b6d4",
+              "is_type_of":       "#a78bfa",
+              "extracted_from":   "#fbbf24",
+              "derived_from":     "#fbbf24",
+              "species_of":       "#34d399",
+              "studies":          "#f472b6",
+              "uses":             "#60a5fa",
+              "inhibits":         "#f87171",
+              "activates":        "#34d399",
+              "regulates":        "#fb923c",
+            };
+            return colors[rel] || "#94a3b8";
+          },
+          "text-rotation": "autorotate",
+          "text-background-color": "#0f1117",
+          "text-background-opacity": 0.85,
+          "text-background-padding": "3px",
+          "text-margin-y": -6,
+        }
+      },
+      { selector: ".faded", style: { opacity: 0.07 } },
+      { selector: ".lit",   style: { opacity: 1 } },
+    ],
+    layout: {
+      name: "cose", animate: true, animationDuration: 600, randomize: false,
+      nodeRepulsion: () => 18000, idealEdgeLength: () => 160,
+      edgeElasticity: () => 80, gravity: 0.25, numIter: 1200,
+      fit: true, padding: 50,
+    }
+  });
+
+  cy.on("tap", "node", evt => {
+    const node = evt.target;
+    cy.elements().addClass("faded").removeClass("lit");
+    node.closedNeighborhood().removeClass("faded").addClass("lit");
+    showDetails(node);
+  });
+
+  // Click edge — show relationship details
+  cy.on("tap", "edge", evt => {
+    const edge = evt.target;
+    const rel    = edge.data("relation") || "co_occurs_with";
+    const weight = edge.data("weight") || 1;
+    const source = edge.data("source");
+    const target = edge.data("target");
+
+    cy.elements().addClass("faded").removeClass("lit");
+    edge.addClass("lit");
+    cy.getElementById(source).removeClass("faded").addClass("lit");
+    cy.getElementById(target).removeClass("faded").addClass("lit");
+
+    const relColors = {
+      "treats": "#34d399", "causes": "#f87171", "contains": "#fbbf24",
+      "interacts_with": "#60a5fa", "part_of": "#a78bfa", "studied_in": "#f472b6",
+      "associated_with": "#fb923c", "biomarker_of": "#e879f9",
+      "produces": "#84cc16", "prevents": "#06b6d4",
+      "is_type_of": "#a78bfa", "extracted_from": "#fbbf24", "derived_from": "#fbbf24",
+      "species_of": "#34d399", "studies": "#f472b6", "uses": "#60a5fa",
+      "inhibits": "#f87171", "activates": "#34d399", "regulates": "#fb923c",
+      "co_occurs_with": "#4b5563", "related_to": "#4b5563",
+    };
+    const color = relColors[rel.toLowerCase()] || "#94a3b8";
+
+    document.getElementById("node-title").innerHTML =
+      `<span style="color:${color}">⬡</span> ${source} → ${target}`;
+    document.getElementById("node-meta").innerHTML =
+      `Relationship: <strong style="color:${color}">${rel.replace(/_/g," ")}</strong>
+       <br>Co-occurs in <strong>${weight}</strong> paper${weight!==1?"s":""}`;
+    document.getElementById("details-body").innerHTML =
+      `<div style="background:#0f1117;border:1px solid ${color};border-radius:8px;padding:12px 14px;margin-top:4px">
+        <div style="font-size:0.78rem;color:#64748b;margin-bottom:6px">RELATIONSHIP TYPE</div>
+        <div style="font-size:1rem;font-weight:600;color:${color}">${rel.replace(/_/g," ")}</div>
+        <div style="font-size:0.8rem;color:#94a3b8;margin-top:8px">
+          <strong>${source}</strong> ${rel.replace(/_/g," ")} <strong>${target}</strong>
+        </div>
+        <div style="font-size:0.75rem;color:#4b5563;margin-top:6px">
+          Evidence: ${weight} shared paper${weight!==1?"s":""}
+        </div>
+      </div>`;
+  });
+
+  cy.on("tap", evt => {
+    if (evt.target !== cy) return;
+    cy.elements().removeClass("faded lit");
+    resetDetails();
+  });
+}
+
+// ── Details Panel ────────────────────────────────────────────────────
+function showDetails(node) {
+  const name      = node.data("id");
+  const weight    = node.data("weight") || 0;
+  const isQuery   = node.data("is_query");
+  const relevance = node.data("relevance") || 0;
+
+  document.getElementById("node-title").textContent = name;
+  document.getElementById("node-meta").innerHTML =
+    `<span>${weight} paper${weight!==1?"s":""}</span>
+     ${isQuery ? `<span style="color:#f59e0b"> · Query</span>` : ""}
+     <br>Relevance: <strong style="color:#a78bfa">${relevance.toFixed(3)}</strong>`;
+
+  const neighbours = node.connectedEdges().connectedNodes().filter(n => n.id() !== node.id());
+  const papers = papersByConceptGlobal[name] || [];
+
+  document.getElementById("details-body").innerHTML = `
+    ${neighbours.length > 0 ? `
+    <div id="neighbours-section">
+      <h3>Connected (${neighbours.length})</h3>
+      <div>${neighbours.map(n =>
+        `<span class="neighbour-tag" onclick="focusNode('${n.data("id")}')">${n.data("label")}</span>`
+      ).join("")}</div>
+    </div>` : ""}
+    <div id="papers-section">
+      <h3>${papers.length} Supporting Paper${papers.length!==1?"s":""}</h3>
+      ${papers.length === 0
+        ? `<p style="color:#374151;font-size:0.8rem">No papers cached.</p>`
+        : papers.slice(0, 10).map(p => `
+          <div class="paper-card">
+            <div class="ptitle">${p.title || "(no title)"}</div>
+            <div class="pmeta">${p.journal || "Unknown journal"}
+              ${p.match_type ? ` · <span style="color:${p.match_type==='keyword'?'#7c3aed':p.match_type==='semantic'?'#38bdf8':'#4ade80'}">${p.match_type==='keyword'?'🔎 keyword':p.match_type==='semantic'?'🧠 semantic':'🔎🧠 both'}</span>` : ""}
+            </div>
+            ${p.doi ? `<a href="https://doi.org/${p.doi}" target="_blank">View paper ↗</a>` : ""}
+          </div>`).join("")}
+    </div>
+  `;
+}
+
+function resetDetails() {
+  document.getElementById("node-title").textContent = "Click a node";
+  document.getElementById("node-meta").textContent = "Select a concept to explore";
+  document.getElementById("details-body").innerHTML =
+    `<p style="color:#374151;font-size:0.82rem">Click any node to see supporting papers.</p>`;
+}
+
+function focusNode(name) {
+  const node = cy.getElementById(name);
+  if (!node.length) return;
+  cy.animate({ center: { eles: node }, zoom: 1.8 }, { duration: 400 });
+  cy.elements().addClass("faded").removeClass("lit");
+  node.closedNeighborhood().removeClass("faded").addClass("lit");
+  showDetails(node);
+}
+
+// ── Build Graph from API ─────────────────────────────────────────────
+async function buildGraph(overrideQuery) {
+  const query = (overrideQuery || document.getElementById("query-input").value).trim();
+  if (!query) return;
+
+  const btn = document.getElementById("search-btn");
+  btn.disabled = true;
+  document.getElementById("empty-state").style.display = "none";
+  setOverlay(true, `Searching papers for "${query}"…`);
+  status("Running pipeline…");
+
+  try {
+    setOverlay(true, "Normalizing concepts with LLM…");
+    const res = await fetch(`${API}/graph`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, user_id: "demo_user" })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    if (data.error) { status(`No results: ${data.error}`); setOverlay(false); return; }
+
+    // Save to history (in-memory with data, localStorage without)
+    const existing = history.findIndex(h => h.query.toLowerCase() === query.toLowerCase());
+    const entry = {
+      query,
+      timestamp: Date.now(),
+      nodeCount: data.nodes.length,
+      edgeCount: data.edges.length,
+      data,                              // full data in memory
+      papers: data.papers_by_concept,
+    };
+    if (existing >= 0) history.splice(existing, 1);  // remove duplicate
+    history.unshift(entry);              // add to top
+    saveHistory();
+
+    activeQuery = query;
+    allData = data;
+    papersByConceptGlobal = data.papers_by_concept || {};
+
+    setOverlay(false);
+    rerenderGraph();
+    resetDetails();
+    renderHistory();
+  } catch (err) {
+    setOverlay(false);
+    status(`Error: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────
+document.getElementById("query-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") buildGraph();
+});
+
+renderHistory();
+</script>
+</body>
+</html>

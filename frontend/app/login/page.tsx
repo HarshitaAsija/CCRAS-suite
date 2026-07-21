@@ -4,9 +4,31 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
+function GraphIllustration() {
+  return (
+    <svg width="100%" height="100%" viewBox="0 0 520 380" fill="none">
+      {[
+        [80,60,180,130],[80,60,55,180],[180,130,310,75],[180,130,340,195],
+        [180,130,195,275],[310,75,390,148],[55,180,95,278],[340,195,390,148],
+        [340,195,298,298],[195,275,298,298],[95,278,195,275],
+        [310,75,238,35],[390,148,430,95],[55,180,18,238],
+        [238,35,160,25],[430,95,470,60],[18,238,10,300],
+      ].map(([x1,y1,x2,y2],i) => (
+        <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.2)" strokeWidth="1.2"/>
+      ))}
+      <circle cx="298" cy="220" r="50" stroke="#FF6B4A" strokeWidth="1.5" strokeDasharray="5 4" fill="rgba(255,107,74,0.1)"/>
+      <text x="298" y="285" textAnchor="middle" fontSize="10" fontWeight="600" fill="#FF6B4A" letterSpacing="0.12em">UNSTUDIED</text>
+      {[[80,60,9],[310,75,8],[55,180,8],[390,148,7],[95,278,8],[195,275,7],[298,298,7],[238,35,6],[430,95,5],[18,238,5],[160,25,5]].map(([cx,cy,r],i) => (
+        <circle key={i} cx={cx} cy={cy} r={r} fill="rgba(255,255,255,0.8)" opacity={i < 7 ? 0.9 : 0.5}/>
+      ))}
+      <circle cx="298" cy="220" r="10" fill="#FF6B4A" opacity="0.95"/>
+      <circle cx="180" cy="130" r="13" fill="white" opacity="0.95"/>
+    </svg>
+  );
+}
+
 function LoginForm() {
   const { login } = useAuth();
-  const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,43 +47,68 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <nav className="px-12 py-4 flex items-center gap-2.5">
-        <Link href="/" className="flex items-center gap-2.5 no-underline">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-primary text-white text-sm font-bold shadow-sm">
-            R
-          </div>
-          <span className="font-sans font-semibold text-foreground text-sm">RISHI-AI</span>
-        </Link>
-      </nav>
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-border-light p-10">
-          <h1 className="font-display text-2xl font-semibold text-foreground mb-2">Welcome back</h1>
-          <p className="font-sans text-sm text-text-muted mb-8">Sign in to your RISHI-AI account</p>
+    <div className="flex min-h-screen">
+      {/* LEFT — hero panel, uses your existing bg-primary */}
+      <div className="hidden lg:flex w-1/2 flex-col p-12 bg-primary relative overflow-hidden">
+        <div className="flex items-center gap-2.5 mb-auto">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/15 text-white text-sm font-bold border border-white/20">R</div>
+          <span className="text-white font-semibold text-sm tracking-wide">RISHI-AI</span>
+        </div>
+        <div className="mb-8">
+          <p className="text-white/50 text-xs font-semibold uppercase tracking-[0.16em] mb-4">DISCOVER MODULE</p>
+          <h1 className="text-white text-4xl font-bold leading-tight mb-4" style={{ fontFamily: 'Georgia, serif' }}>
+            Every map of knowledge<br />has an empty corner.
+          </h1>
+          <p className="text-white/60 text-base">That corner is where your next paper begins.</p>
+        </div>
+        <div className="bg-white/10 border border-white/15 rounded-2xl p-6" style={{ height: 320 }}>
+          <GraphIllustration />
+        </div>
+      </div>
+
+      {/* RIGHT — form panel */}
+      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-background">
+        {/* Mobile logo */}
+        <div className="lg:hidden flex items-center gap-2 mb-8 self-start">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-primary text-white text-sm font-bold">R</div>
+          <span className="font-semibold text-foreground text-sm">RISHI-AI</span>
+        </div>
+
+        <div className="w-full max-w-sm">
+          <p className="text-xs font-semibold text-primary uppercase tracking-[0.16em] mb-3">WELCOME BACK</p>
+          <h2 className="text-3xl font-bold text-foreground mb-3 leading-tight" style={{ fontFamily: 'Georgia, serif' }}>
+            Log in to CCRAS Research Intelligence Suite
+          </h2>
+          <p className="text-sm text-text-muted mb-8">Pick up where you left off in your research dashboard.</p>
+
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-            {[
-              { label: 'Email', type: 'email', value: email, set: setEmail, placeholder: 'you@ccras.gov.in' },
-              { label: 'Password', type: 'password', value: password, set: setPassword, placeholder: '••••••••' },
-            ].map((f, i) => (
-              <div key={i}>
-                <label className="block text-sm font-semibold text-foreground mb-1.5">{f.label}</label>
-                <input 
-                  type={f.type} 
-                  value={f.value} 
-                  placeholder={f.placeholder} 
-                  required
-                  onChange={e => f.set(e.target.value)} 
-                  className="w-full h-11 px-3 border border-border-med rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm placeholder:text-text-dim text-foreground" 
-                />
-              </div>
-            ))}
+            <div>
+              <label className="block text-sm font-semibold text-foreground mb-1.5">Email</label>
+              <input
+                type="email" value={email} placeholder="you@institute.org" required
+                onChange={e => setEmail(e.target.value)}
+                className="w-full h-11 px-3 border border-border-med rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm placeholder:text-text-dim text-foreground"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-foreground mb-1.5">Password</label>
+              <input
+                type="password" value={password} placeholder="••••••••" required
+                onChange={e => setPassword(e.target.value)}
+                className="w-full h-11 px-3 border border-border-med rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm placeholder:text-text-dim text-foreground"
+              />
+            </div>
             {error && <p className="text-xs font-medium text-danger bg-danger-light border border-danger/20 px-3 py-2 rounded-lg">{error}</p>}
-            <button type="submit" disabled={loading} className="w-full py-3 mt-1 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90 transition-colors shadow-sm" style={{ opacity: loading ? 0.7 : 1 }}>
-              {loading ? 'Signing in…' : 'Sign in'}
+            <button type="submit" disabled={loading}
+              className="w-full py-3 mt-1 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90 transition-colors shadow-sm"
+              style={{ opacity: loading ? 0.7 : 1 }}>
+              {loading ? 'Signing in…' : 'Log in'}
             </button>
           </form>
-          <p className="font-sans text-sm text-text-muted text-center mt-6">
-            No account?{' '}<Link href="/signup" className="text-primary font-bold hover:underline">Sign up free</Link>
+
+          <p className="text-sm text-text-muted text-center mt-6">
+            Don't have an account?{' '}
+            <Link href="/signup" className="text-primary font-bold hover:underline">Sign up</Link>
           </p>
         </div>
       </div>
