@@ -1200,7 +1200,7 @@ function StepTimeline({ state, updateState }: StepProps) {
       <div className="relative border-l-2 border-slate-200 ml-4 space-y-8">
         {state.timeline.map((t) => (
           <div key={t.id} className="relative pl-8">
-            <div className={`absolute -left-[11px] top-1 w-5 h-5 rounded-full border-4 border-white ${t.color.replace('text', 'bg')} shadow-sm`} />
+            <div className={`absolute -left-[11px] top-1 w-5 h-5 rounded-full border-4 border-white ${(t.color || 'text-primary').replace('text', 'bg')} shadow-sm`} />
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
               <div className="font-black text-slate-800">{t.label}</div>
               <div className="text-sm font-semibold text-slate-500 mt-1">{t.duration}</div>
