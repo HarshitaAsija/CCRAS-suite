@@ -19,7 +19,7 @@ import psycopg2
 import psycopg2.extras
 from neo4j import GraphDatabase
 from dotenv import load_dotenv
-import google.generativeai as genai
+
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity as cos_sim

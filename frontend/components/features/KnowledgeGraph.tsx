@@ -249,7 +249,7 @@ export function KnowledgeGraph({ initialQuery = "", userId = "demo_user" }: Know
     : [];
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-surface" style={{ minHeight: 640 }}>
+    <div className="flex-1 flex overflow-hidden bg-surface" style={{ height: 640 }}>
       <div className="flex-1 relative overflow-hidden bg-background">
         {/* Search bar */}
         <form onSubmit={handleSearch} className="absolute top-4 right-4 z-20 flex gap-2">
@@ -307,7 +307,7 @@ export function KnowledgeGraph({ initialQuery = "", userId = "demo_user" }: Know
         )}
 
         {/* Cytoscape mounts here — always present in the DOM so cy has a container to bind to */}
-        <div ref={containerRef} className="w-full h-full" style={{ minHeight: 640 }} />
+        <div ref={containerRef} className="w-full h-full" style={{ height: 640 }} />
 
         {/* Legend */}
         {nodes.length > 0 && (
