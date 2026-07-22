@@ -139,6 +139,11 @@ export function StudyDesignStudio() {
       } catch (e) { console.error("Failed to parse saved state", e); }
     }
 
+    const rishiQuery = localStorage.getItem("rishi_active_query");
+    if (rishiQuery && !initialState.researchQuestion) {
+      initialState.researchQuestion = rishiQuery;
+    }
+
     const handoff = localStorage.getItem("brahma_handoff_collection");
     if (handoff) {
       try { 

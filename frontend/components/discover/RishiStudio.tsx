@@ -13,6 +13,7 @@ import {
 import {
   fetchGapCards, fetchHypothesisSeeds,
   startSearch, pollSearchStatus, checkApiHealth,
+  fetchLiveBrahmaEvidenceHandoff,
   GapCard, HypothesisSeed, ResearchFront, TrendInfo, SortOption,
 } from "@/lib/api";
 import { ChevronLeft, ChevronRight as ChevronExpand } from "lucide-react";
@@ -575,8 +576,18 @@ function GapCardItem({ gap, selected, onSelect }: {
 // ─────────────────────────────────────────────
 // HYPOTHESIS CARD
 // ─────────────────────────────────────────────
-function HypothesisCard({ seed }: { seed: HypothesisSeed }) {
+function HypothesisCard({ 
+  seed, 
+  topic, 
+  setActivePage 
+}: { 
+  seed: HypothesisSeed; 
+  topic: string; 
+  setActivePage: (p: string) => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [loadingHandoff, setLoadingHandoff] = useState(false);
+  const [handoffError, setHandoffError] = useState("");
   const cc = { high: { bg: "#C0DD97", color: "#27500A" }, medium: { bg: C.amber, color: "#633806" }, low: { bg: C.red, color: "#791F1F" } };
   const c = cc[seed.confidence] ?? cc.medium;
   return (
@@ -618,6 +629,51 @@ function HypothesisCard({ seed }: { seed: HypothesisSeed }) {
               </div>
             ))}
           </div>
+
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+            <button
+              disabled={loadingHandoff}
+              onClick={async () => {
+                setLoadingHandoff(true);
+                setHandoffError("");
+                try {
+                  const handoff = await fetchLiveBrahmaEvidenceHandoff(topic || seed.intervention || "Ayurveda", 30);
+                  const mergedHandoff = {
+                    ...handoff,
+                    hypothesis_seed: seed.hypothesis_text,
+                    pico_suggestion: {
+                      population: seed.population || (handoff as any).pico_suggestion?.population || "",
+                      intervention: seed.intervention || (handoff as any).pico_suggestion?.intervention || "",
+                      comparator: seed.comparator || (handoff as any).pico_suggestion?.comparator || "",
+                      outcome: seed.outcome || (handoff as any).pico_suggestion?.outcome || ""
+                    }
+                  };
+                  localStorage.setItem("brahma_handoff_collection", JSON.stringify(mergedHandoff));
+                  localStorage.removeItem("brahma_protocol_state");
+                  localStorage.setItem("rishi_active_query", topic || seed.intervention || "");
+                  setActivePage("design");
+                } catch (e) {
+                  setHandoffError(e instanceof Error ? e.message : "Evidence fetch failed.");
+                } finally {
+                  setLoadingHandoff(false);
+                }
+              }}
+              style={{
+                width: "100%", padding: "10px 16px", borderRadius: 8,
+                background: C.blue, color: "#FAF6EE", fontSize: 12, fontWeight: 700,
+                border: "none", cursor: loadingHandoff ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+              }}
+            >
+              {loadingHandoff ? "Preparing Brahma Handoff..." : "Design Study in Brahma →"}
+            </button>
+            {handoffError && (
+              <p style={{ margin: 0, fontSize: 11, color: "#E74C3C" }}>
+                ⚠️ {handoffError}
+              </p>
+            )}
+          </div>
+
         </div>
       )}
     </div>
@@ -686,6 +742,7 @@ export function RishiStudio({ setActivePage }: { setActivePage: (p: string) => v
 
   async function handleSearch() {
     if (!topic.trim() || apiAvailable === false) return;
+    localStorage.setItem("rishi_active_query", topic);
     setSearching(true);
     setSearchErr(null);
     setGaps([]); setFronts([]); setOverallTrend(null);
@@ -1040,7 +1097,7 @@ export function RishiStudio({ setActivePage }: { setActivePage: (p: string) => v
                     }
                     return 0;
                   })
-                  .map(seed => <HypothesisCard key={seed.id} seed={seed} />)
+                  .map(seed => <HypothesisCard key={seed.id} seed={seed} topic={topic} setActivePage={setActivePage} />)
               )}
             </div>
           )}
