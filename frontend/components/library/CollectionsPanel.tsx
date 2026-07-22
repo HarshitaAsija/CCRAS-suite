@@ -13,7 +13,7 @@ interface Collection {
   updated_at: string;
 }
 
-interface CollectionsPanelProps = {};
+interface CollectionsPanelProps {};
 
 export const CollectionsPanel: React.FC<CollectionsPanelProps> = () => {
   const [collections, setCollections] = useState<Collection[]>([]);

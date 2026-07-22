@@ -176,3 +176,5 @@ export function getStoredUser(): User | null {
 // with credentials: 'include', for cases where you want to re-validate the
 // session against the server (e.g. on app load) rather than trusting the
 // locally cached copy.
+
+export { getCurrentUserId as getUserId } from '@/lib/user';

@@ -14,11 +14,11 @@ import {
 } from "lucide-react";
 import SearchPage from "./SearchPage";
 import LibraryPage from "./LibraryPage";
-import RagPage from "./RagPage";
+import RAGPage from "./RAGPage";
 import HomePage from "./HomePage";
 import SnowballingPage from "./SnowballingPage";
 import AnalyticsPage from "./AnalyticsPage";
-import UploadPage from "./UploadPage";
+import { UploadPage } from "./UploadPage";
 
 export function RecapLibrary({ setActivePage }: { setActivePage: (page: string) => void }) {
   const [activeTab, setActiveTab] = useState<"home" | "search" | "library" | "rag" | "snowballing" | "analytics" | "upload">("home");
@@ -132,7 +132,7 @@ export function RecapLibrary({ setActivePage }: { setActivePage: (page: string) 
         {activeTab === "home" && <HomePage />}
         {activeTab === "search" && <SearchPage />}
         {activeTab === "library" && <LibraryPage />}
-        {activeTab === "rag" && <RagPage />}
+        {activeTab === "rag" && <RAGPage />}
         {activeTab === "snowballing" && <SnowballingPage />}
         {activeTab === "analytics" && <AnalyticsPage />}
         {activeTab === "upload" && <UploadPage />}

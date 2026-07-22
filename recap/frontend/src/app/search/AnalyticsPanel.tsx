@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSearchAnalytics } from "../../../../lib/api";
+import { getSearchAnalytics } from "@/lib/api";
 import { BarChart3, Loader2, X } from "lucide-react";
 
 interface AnalyticsData {

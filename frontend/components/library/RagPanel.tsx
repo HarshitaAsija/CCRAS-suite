@@ -15,7 +15,7 @@ interface Message {
   confidence_level?: string;
 }
 
-interface RagPanelProps = {};
+interface RagPanelProps {};
 
 export const RagPanel: React.FC<RagPanelProps> = () => {
   const [messages, setMessages] = useState<Message[]>([]);

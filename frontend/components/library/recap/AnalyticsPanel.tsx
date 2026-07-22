@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSearchAnalytics } from "../../../../lib/api";
+import { getSearchAnalytics } from "@/lib/api";
 import { BarChart3, Loader2, X } from "lucide-react";
 
 interface AnalyticsData {
@@ -37,7 +37,7 @@ export function AnalyticsPanel({ open, onClose }: { open: boolean; onClose: () =
           <BarChart3 className="h-4 w-4 text-[#7C3AED]" />
           Search analytics
         </h4>
-        <button onClick={onClose} className="text-[#6B6580] hover:text-[#1E1B2E]">
+        <button onClose={onClose} className="text-[#6B6580] hover:text-[#1E1B2E]">
           <X className="h-4 w-4" />
         </button>
       </div>

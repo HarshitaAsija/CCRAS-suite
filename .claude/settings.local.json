@@ -5,7 +5,10 @@
       "Bash(python3 *)",
       "Bash(npx tsc *)",
       "Bash(npx *)",
-      "Bash(./node_modules/.bin/tsc --noEmit)"
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(tee /tmp/tsc_output.txt)",
+      "Bash(npm install *)",
+      "Bash(pkill *)"
     ]
   }
 }

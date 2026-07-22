@@ -1,3 +1,4 @@
+
 // Snowballing Page
 // Find papers through citation tracking (forward and backward citations)
 // Features: DOI/title search, forward/backward citations, depth selector, add to library
@@ -19,7 +20,7 @@ import {
 import { ScrollArea } from "./components/ui/scroll-area";
 import { Separator } from "./components/ui/separator";
 import { Search, GitBranch, ArrowUp, ArrowDown } from "lucide-react";
-import { PaperCard } from "./components/ui/papercard";
+import { PaperCard } from "./components/PaperCard";
 import {
   searchForSnowballing,
   getSnowballingResults,
@@ -244,7 +245,7 @@ export default function SnowballingPage() {
                     className="pl-10 h-12 bg-gray-900 border-gray-700 text-white placeholder:text-gray-500 focus:border-purple-500 focus:ring-purple-500"
                   />
                 </div>
-                <Select value={depth} onValueChange={(v) => setDepth(v as "1" | "2")}>
+                <Select value={depth} onValueChange={(v) => setDepth(v as "1" | "2") }>
                   <SelectTrigger className="w-32 h-12 bg-gray-900 border-gray-700 text-white">
                     <SelectValue />
                   </SelectTrigger>

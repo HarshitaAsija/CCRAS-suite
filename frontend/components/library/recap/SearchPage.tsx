@@ -8,12 +8,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Search, SlidersHorizontal, ChevronLeft, ChevronRight, X, Bookmark } from "lucide-react";
-import { ResultCard } from "./components/ResultCard";
-import { SearchSuggestions } from "./components/SearchSuggestions";
-import { SavedSearchesMenu, SavedSearchesTrigger } from "./components/SavedSearchesMenu";
-import { searchPapers } from "./lib/api";
-import { getCurrentUserId } from "./lib/user";
-import { Paper, SearchMode, SavedSearch } from "./types/paper";
+import { ResultCard } from "./ResultCard";
+import { SearchSuggestions } from "./SearchSuggestions";
+import { SavedSearchesMenu, SavedSearchesTrigger } from "./SavedSearchesMenu";
+import { searchPapers } from "../../../lib/api";
+import { getCurrentUserId } from "../../../lib/user";
+import { Paper, SearchMode, SavedSearch } from "../../../types/paper";
 
 const MODE_LABELS: Record<SearchMode, { label: string; hint: string }> = {
   keyword: { label: "Full-text", hint: "BM25 · PostgreSQL FTS" },

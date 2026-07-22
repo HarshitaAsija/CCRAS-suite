@@ -4,10 +4,10 @@
 
 "use client";
 
-import { Card } from "../../components/ui/card";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { SourceCitation } from "../../types/paper";
+import { Card } from "../../../../../src/components/ui/card";
+import { Badge } from "../../../../../src/components/ui/badge";
+import { Button } from "../../../../../src/components/ui/button";
+import { SourceCitation } from "../../../../../types/paper";
 import { FileText, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -73,3 +73,4 @@ export function SourceCitationCard({
       </div>
     </Card>
   );
+}

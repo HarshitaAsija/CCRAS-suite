@@ -7,16 +7,16 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
-import { ScrollArea } from "./components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "./components/ui/dialog";
+} from "@/components/ui/dialog";
 import {
   Send,
   Plus,
@@ -34,7 +34,7 @@ import {
   Loader2,
   User,
 } from "lucide-react";
-import { cn } from "./lib/utils";
+import { cn } from "@/lib/utils";
 
 // ========================================
 // Types
@@ -71,15 +71,15 @@ interface Session {
 // ========================================
 // Chat Bubble Component
 // ========================================
-const ChatBubble = ({ 
-  message, 
-  onCitationClick 
-}: { 
-  message: ChatMessage; 
+const ChatBubble = ({
+  message,
+  onCitationClick
+}: {
+  message: ChatMessage;
   onCitationClick?: (citation: Citation) => void;
 }) => {
   const getConfidenceColor = (level: string) => {
-    switch(level) {
+    switch (level) {
       case "HIGH": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
       case "MEDIUM": return "bg-amber-500/20 text-amber-400 border-amber-500/30";
       case "LOW": return "bg-red-500/20 text-red-400 border-red-500/30";
@@ -97,11 +97,10 @@ const ChatBubble = ({
 
   return (
     <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[85%] md:max-w-[75%] ${
-        message.role === "user" 
-          ? "bg-primary text-primary-foreground rounded-2xl rounded-br-sm" 
+      <div className={`max-w-[85%] md:max-w-[75%] ${message.role === "user"
+          ? "bg-primary text-primary-foreground rounded-2xl rounded-br-sm"
           : "bg-card border border-border text-foreground rounded-2xl rounded-tl-sm"
-      } p-4`}>
+        } p-4`}>
         {/* Message Header */}
         <div className="flex items-center gap-2 mb-1.5">
           {message.role === "assistant" && (
@@ -202,7 +201,7 @@ export default function RAGAssistantPage() {
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
-  
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -228,7 +227,7 @@ export default function RAGAssistantPage() {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "username=newuser@example.com&password=test123"
       });
-      
+
       if (loginRes.ok) {
         const data = await loginRes.json();
         setToken(data.access_token);
@@ -286,7 +285,7 @@ export default function RAGAssistantPage() {
 
   const createNewSession = async () => {
     if (!token) return;
-    
+
     try {
       // Create a new session with a title
       const title = newSessionTitle || "New Chat";
@@ -301,18 +300,18 @@ export default function RAGAssistantPage() {
           session_id: null
         })
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         const sessionId = data.session_id;
-        
+
         const newSession: Session = {
           id: sessionId,
           title: title,
           date: new Date().toISOString().split("T")[0],
           messageCount: 1
         };
-        
+
         setSessions((prev) => [newSession, ...prev]);
         setActiveSession(sessionId);
         setMessages([{
@@ -340,7 +339,7 @@ export default function RAGAssistantPage() {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
       });
-      
+
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       if (activeSession === sessionId) {
         setActiveSession(null);
@@ -360,7 +359,7 @@ export default function RAGAssistantPage() {
       content: input.trim(),
       timestamp: new Date()
     };
-    
+
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
@@ -436,13 +435,13 @@ export default function RAGAssistantPage() {
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantId
-                      ? { 
-                          ...msg, 
-                          confidence: { 
-                            score: confidence.score, 
-                            level: confidence.level 
-                          } 
+                      ? {
+                        ...msg,
+                        confidence: {
+                          score: confidence.score,
+                          level: confidence.level
                         }
+                      }
                       : msg
                   )
                 );
@@ -473,11 +472,11 @@ export default function RAGAssistantPage() {
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantId
-            ? { 
-                ...msg, 
-                content: "Sorry, something went wrong. Please try again.",
-                isStreaming: false
-              }
+            ? {
+              ...msg,
+              content: "Sorry, something went wrong. Please try again.",
+              isStreaming: false
+            }
             : msg
         )
       );
@@ -504,7 +503,7 @@ export default function RAGAssistantPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `krita-chat-${new Date().toISOString().slice(0,10)}.txt`;
+    a.download = `krita-chat-${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -532,8 +531,8 @@ export default function RAGAssistantPage() {
 
       {/* Sidebar */}
       <aside className={`
-        fixed md:relative z-40 w-72 bg-card border-r border-border 
-        h-full transition-transform duration-300 ease-in-out flex flex-col
+        fixed md:relative z-40 w-72 bg-card border-r border-border
+        h-full transition-transform duration-300 ease-in-out-300 ease-in-out flex flex-col
         ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
       `}>
         {/* Brand */}
@@ -653,7 +652,7 @@ export default function RAGAssistantPage() {
             </div>
             <div className="min-w-0">
               <h1 className="font-semibold text-sm truncate">
-                {activeSession 
+                {activeSession
                   ? sessions.find(s => s.id === activeSession)?.title || "Research Assistant"
                   : "Research Assistant"
                 }
