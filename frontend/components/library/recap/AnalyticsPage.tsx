@@ -150,7 +150,7 @@ function HeroIllustration() {
         <text x="-24" y="6" fontSize="12" fontWeight="700" fill="#7c3aed" fontFamily="sans-serif">Sources</text>
         <circle cx="60" cy="90" r="52" fill="none" stroke="#f3e8ff" strokeWidth="18" />
         <circle cx="60" cy="90" r="52" fill="none" stroke="#a855f7" strokeWidth="18" strokeDasharray="120 320" strokeLinecap="round" />
-        <circle cx="60" cy="90" r="52" fill="none" stroke="#e879f9" strokeWeight="18" strokeDasharray="70 320" strokeDashoffset="-120" strokeLinecap="round" />
+        <circle cx="60" cy="90" r="52" fill="none" stroke="#e879f9" strokeWidth="18" strokeDasharray="70 320" strokeDashoffset="-120" strokeLinecap="round" />
         <circle cx="60" cy="90" r="52" fill="none" stroke="#f0abfc" strokeWidth="18" strokeDasharray="50 320" strokeDashoffset="-190" strokeLinecap="round" />
       </g>
 
@@ -186,10 +186,10 @@ function HeroIllustration() {
 
       {/* growth badge card */}
       <g transform="translate(470,330)">
-        <rect x="0" y="0" width="230" height="110" rx="16" fill="#ffffff" stroke="#f3d9fb" strokeWeight="1.5" />
+        <rect x="0" y="0" width="230" height="110" rx="16" fill="#ffffff" stroke="#f3d9fb" strokeWidth="1.5" />
         <circle cx="34" cy="55" r="22" fill="url(#donutGrad)" opacity="0.15" />
-        <path d="M22 60 L30 48 L40 55 L52 38" stroke="url(#donutGrad)" strokeWeight="3.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M45 38 L52 38 L52 45" stroke="url(#donutGrad)" strokeWeight="3.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M22 60 L30 48 L40 55 L52 38" stroke="url(#donutGrad)" strokeWidth="3.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M45 38 L52 38 L52 45" stroke="url(#donutGrad)" strokeWidth="3.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
         <text x="70" y="50" fontSize="20" fontWeight="800" fill="#7c3aed" fontFamily="sans-serif">+24%</text>
         <text x="70" y="70" fontSize="11" fill="#a78bfa" fontFamily="sans-serif">papers this month</text>
       </g>
@@ -231,7 +231,7 @@ function BackgroundIllustrations() {
           points="5,90 40,60 75,70 110,30 150,10"
           fill="none"
           stroke="#d946ef"
-          strokeWeight="3"
+          strokeWidth="3"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
@@ -244,14 +244,14 @@ function BackgroundIllustrations() {
 
       {/* large soft donut/pie ring, mid-right */}
       <svg className="absolute top-[380px] right-[-30px] opacity-[0.15]" width="220" height="220" viewBox="0 0 220 220">
-        <circle cx="110" cy="110" r="90" fill="none" stroke="#e9d5ff" strokeWeight="22" />
+        <circle cx="110" cy="110" r="90" fill="none" stroke="#e9d5ff" strokeWidth="22" />
         <circle
           cx="110"
           cy="110"
           r="90"
           fill="none"
           stroke="#c084fc"
-          strokeWeight="22"
+          strokeWidth="22"
           strokeDasharray="180 400"
           strokeLinecap="round"
         />
@@ -261,7 +261,7 @@ function BackgroundIllustrations() {
           r="90"
           fill="none"
           stroke="#f0abfc"
-          strokeWeight="22"
+          strokeWidth="22"
           strokeDasharray="90 400"
           strokeDashoffset="-190"
           strokeLinecap="round"
@@ -270,8 +270,8 @@ function BackgroundIllustrations() {
 
       {/* magnifying glass + tag motif, lower left */}
       <svg className="absolute bottom-24 left-8 opacity-[0.18]" width="130" height="130" viewBox="0 0 130 130">
-        <circle cx="55" cy="55" r="30" fill="none" stroke="#a855f7" strokeWeight="6" />
-        <line x1="77" y1="77" x2="105" y2="105" stroke="#d946ef" strokeWeight="8" strokeLinecap="round" />
+        <circle cx="55" cy="55" r="30" fill="none" stroke="#a855f7" strokeWidth="6" />
+        <line x1="77" y1="77" x2="105" y2="105" stroke="#d946ef" strokeWidth="8" strokeLinecap="round" />
       </svg>
 
       {/* faded scatter dots, bottom right */}
@@ -286,8 +286,8 @@ function BackgroundIllustrations() {
 
       {/* faint document/paper stack, bottom center */}
       <svg className="absolute bottom-4 left-1/2 -translate-x-1/2 opacity-[0.12]" width="140" height="100" viewBox="0 0 140 100">
-        <rect x="10" y="20" width="90" height="70" rx="8" fill="#fdf4ff" stroke="#e9d5ff" strokeWeight="2" />
-        <rect x="0" y="10" width="90" height="70" rx="8" fill="#faf5ff" stroke="#f3d9fb" strokeWeight="2" />
+        <rect x="10" y="20" width="90" height="70" rx="8" fill="#fdf4ff" stroke="#e9d5ff" strokeWidth="2" />
+        <rect x="0" y="10" width="90" height="70" rx="8" fill="#faf5ff" stroke="#f3d9fb" strokeWidth="2" />
         <rect x="14" y="26" width="50" height="6" rx="3" fill="#e9d5ff" />
         <rect x="14" y="40" width="65" height="5" rx="2.5" fill="#f3e8ff" />
         <rect x="14" y="52" width="55" height="5" rx="2.5" fill="#f3e8ff" />

@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 
 interface KeywordBadgeProps {
   keyword: string;
-  variant?: "default" | "secondary" | "destructive" | "outline-solid";
+  variant?: "default" | "secondary" | "destructive" | "outline";
   size?: "sm" | "md" | "lg";
   clickable?: boolean;
   className?: string;

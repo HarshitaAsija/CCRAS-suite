@@ -4,9 +4,9 @@
 
 "use client";
 
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Card } from "./card";
+import { Badge } from "./badge";
+import { Button } from "./button";
 import { SourceCitation } from "@/types/paper";
 import { FileText, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -73,3 +73,4 @@ export function SourceCitationCard({
       </div>
     </Card>
   );
+}

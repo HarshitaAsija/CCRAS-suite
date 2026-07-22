@@ -27,9 +27,12 @@ export interface ProtocolIntelligence {
   risks: AIRisk[];
   compliance: GuidelineCompliance[];
   lastCalculated: string;
+  calculated?: boolean;
 }
 
 export interface ProtocolState {
+  id?: string;
+  title?: string;
   researchQuestion: string;
   pico: { population: string; intervention: string; comparator: string; outcome: string };
   hypothesis: { 
@@ -67,6 +70,9 @@ export interface ProtocolState {
     duration: string;
     safety: string;
     standardization: string;
+    targets?: any[];
+    correlationPaths?: any[];
+    source?: string;
   };
   timeline: { id: string; label: string; duration: string; color: string }[];
   ethics: { id: string; label: string; checked: boolean }[];

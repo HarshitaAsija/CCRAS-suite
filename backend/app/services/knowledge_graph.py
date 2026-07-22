@@ -68,7 +68,7 @@ _embed_model = None
 def get_embedder():
     global _embed_model
     if _embed_model is None:
-        logger.info("Loading embedding model…")
+        logger.info("Loading embedding model...")
         _embed_model = SentenceTransformer("all-MiniLM-L6-v2")
     return _embed_model
 
@@ -156,12 +156,16 @@ class PostgresClient:
         self._connect()
 
     def _connect(self):
-        self.conn = psycopg2.connect(
-            PG_DSN,
-            options="-c timezone=Asia/Kolkata"
-        )
-        self.conn.autocommit = True
-        logger.info("Connected to PostgreSQL ✓")
+        try:
+            self.conn = psycopg2.connect(
+                PG_DSN,
+                options="-c timezone=Asia/Kolkata"
+            )
+            self.conn.autocommit = True
+            logger.info("Connected to PostgreSQL [OK]")
+        except Exception as e:
+            self.conn = None
+            logger.warning(f"PostgreSQL connection failed: {e}")
 
     def _ensure_connection(self):
         try:
@@ -169,7 +173,7 @@ class PostgresClient:
             cur.execute("SELECT 1")
             cur.close()
         except (psycopg2.OperationalError, psycopg2.InterfaceError):
-            logger.warning("PostgreSQL connection lost — reconnecting…")
+            logger.warning("PostgreSQL connection lost - reconnecting...")
             self._connect()
 
     def search_papers_by_keyword(self, query: str, top_k: int = TOP_K_PAPERS) -> list[dict]:
@@ -920,8 +924,12 @@ def build_graph(
 # ─────────────────────────────────────────────
 class Neo4jClient:
     def __init__(self):
-        self.driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-        logger.info("Connected to Neo4j ✓")
+        try:
+            self.driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            logger.info("Connected to Neo4j [OK]")
+        except Exception as e:
+            self.driver = None
+            logger.warning(f"Neo4j connection failed: {e}")
 
     def close(self):
         self.driver.close()

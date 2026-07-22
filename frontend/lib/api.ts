@@ -154,7 +154,7 @@ export async function fetchStudies(
   return res.json();
 }
 
-export async function fetchStudyById(id: number): Promise<StudyProtocol> {
+export async function fetchStudyById(id: number | string): Promise<StudyProtocol> {
   const res = await fetch(`${getBaseUrl()}/studies/${id}`);
   if (!res.ok) throw new Error(`Failed to fetch study ${id}`);
   return res.json();
@@ -170,7 +170,7 @@ export async function createStudy(study: StudyProtocol): Promise<StudyProtocol> 
   return res.json();
 }
 
-export async function updateStudy(id: number, study: Partial<StudyProtocol>): Promise<StudyProtocol> {
+export async function updateStudy(id: number | string, study: Partial<StudyProtocol>): Promise<StudyProtocol> {
   const res = await fetch(`${getBaseUrl()}/studies/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -180,7 +180,7 @@ export async function updateStudy(id: number, study: Partial<StudyProtocol>): Pr
   return res.json();
 }
 
-export async function deleteStudy(id: number): Promise<void> {
+export async function deleteStudy(id: number | string): Promise<void> {
   const res = await fetch(`${getBaseUrl()}/studies/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`Failed to delete study ${id}`);
 }
@@ -433,8 +433,8 @@ export async function fetchDemoStatsAPI(): Promise<any> {
 // --- RISHI-AI ORIGINAL ENDPOINTS ---
 
 const RISHI_BASE_URL = typeof window !== "undefined"
-  ? `http://${window.location.hostname}:8001`
-  : process.env.NEXT_PUBLIC_RISHI_API_URL || "http://localhost:8001";
+  ? `http://${window.location.hostname === "localhost" ? "127.0.0.1" : window.location.hostname}:8001`
+  : process.env.NEXT_PUBLIC_RISHI_API_URL || "http://127.0.0.1:8001";
 
 export interface SupportingPaper {
   id:                    string;

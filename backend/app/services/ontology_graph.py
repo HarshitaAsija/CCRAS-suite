@@ -139,9 +139,13 @@ class PostgresClient:
         self._connect()
 
     def _connect(self):
-        self.conn = psycopg2.connect(PG_DSN, options="-c timezone=Asia/Kolkata")
-        self.conn.autocommit = True
-        logger.info("Connected to PostgreSQL ✓")
+        try:
+            self.conn = psycopg2.connect(PG_DSN, options="-c timezone=Asia/Kolkata")
+            self.conn.autocommit = True
+            logger.info("Connected to PostgreSQL [OK]")
+        except Exception as e:
+            self.conn = None
+            logger.warning(f"PostgreSQL connection failed: {e}")
 
     def _ensure(self):
         try:
@@ -267,97 +271,119 @@ def build_ontology_graph(papers: list[dict]) -> tuple[dict, dict]:
 # ─────────────────────────────────────────────
 class Neo4jClient:
     def __init__(self):
-        self.driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-        logger.info("Connected to Neo4j ✓")
+        try:
+            self.driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            logger.info("Connected to Neo4j [OK]")
+        except Exception as e:
+            self.driver = None
+            logger.warning(f"Neo4j connection failed: {e}")
 
     def close(self):
         self.driver.close()
 
     def write_ontology_graph(self, nodes, edges):
-        with self.driver.session() as s:
-            logger.info("Clearing old ontology graph…")
-            s.run("MATCH (n:Ontology) DETACH DELETE n")
+        if not self.driver:
+            logger.warning("[neo4j offline] Driver not initialized, skipping write")
+            return
+        try:
+            with self.driver.session() as s:
+                logger.info("Clearing old ontology graph...")
+                s.run("MATCH (n:Ontology) DETACH DELETE n")
 
-            s.run("CREATE INDEX IF NOT EXISTS FOR (o:Ontology) ON (o.code)")
+                s.run("CREATE INDEX IF NOT EXISTS FOR (o:Ontology) ON (o.code)")
 
-            logger.info("Writing 8 ontology nodes…")
-            for code, meta in nodes.items():
-                s.run("""
-                    CREATE (o:Ontology {
-                        code: $code, name: $name, emoji: $emoji,
-                        color: $color, paper_count: $pc,
-                        keyword_count: $kc, sample_kws: $sk,
-                        sample_papers: $sp, paper_ids: $pids
-                    })
-                """, code=code, name=meta["name"], emoji=meta["emoji"],
-                     color=meta["color"], pc=meta["paper_count"],
-                     kc=meta["keyword_count"], sk=meta["sample_kws"],
-                     sp=json.dumps(meta["sample_papers"]), pids=meta.get("paper_ids", []))
+                logger.info("Writing 8 ontology nodes...")
+                for code, meta in nodes.items():
+                    s.run("""
+                        CREATE (o:Ontology {
+                            code: $code, name: $name, emoji: $emoji,
+                            color: $color, paper_count: $pc,
+                            keyword_count: $kc, sample_kws: $sk,
+                            sample_papers: $sp, paper_ids: $pids
+                        })
+                    """, code=code, name=meta["name"], emoji=meta["emoji"],
+                         color=meta["color"], pc=meta["paper_count"],
+                         kc=meta["keyword_count"], sk=meta["sample_kws"],
+                         sp=json.dumps(meta["sample_papers"]), pids=meta.get("paper_ids", []))
 
-            logger.info(f"Writing {len(edges)} ontology edges…")
-            for (a, b), meta in edges.items():
-                s.run("""
-                    MATCH (oa:Ontology {code: $a})
-                    MATCH (ob:Ontology {code: $b})
-                    CREATE (oa)-[:CO_OCCURS {weight: $w}]->(ob)
-                """, a=a, b=b, w=meta["weight"])
-
-        logger.info("Neo4j write complete ✓")
+                logger.info(f"Writing {len(edges)} ontology edges...")
+                for (a, b), meta in edges.items():
+                    s.run("""
+                        MATCH (oa:Ontology {code: $a})
+                        MATCH (ob:Ontology {code: $b})
+                        CREATE (oa)-[:CO_OCCURS {weight: $w}]->(ob)
+                    """, a=a, b=b, w=meta["weight"])
+            logger.info("Neo4j write complete")
+        except Exception as e:
+            logger.warning(f"[neo4j offline] Failed to write ontology graph: {e}")
 
     def get_ontology_graph_for_viz(self) -> dict:
-        with self.driver.session() as s:
-            onto_rows = s.run("""
-                MATCH (o:Ontology)
-                RETURN o.code AS code, o.name AS name, o.emoji AS emoji,
-                       o.color AS color, o.paper_count AS paper_count,
-                       o.keyword_count AS keyword_count,
-                       o.sample_kws AS sample_kws,
-                       o.sample_papers AS sample_papers
-            """).data()
+        if not self.driver:
+            logger.warning("[neo4j offline] Driver not initialized, returning empty viz")
+            return {"nodes": [], "edges": [], "papers_by_ontology": {}}
+        try:
+            with self.driver.session() as s:
+                onto_rows = s.run("""
+                    MATCH (o:Ontology)
+                    RETURN o.code AS code, o.name AS name, o.emoji AS emoji,
+                           o.color AS color, o.paper_count AS paper_count,
+                           o.keyword_count AS keyword_count,
+                           o.sample_kws AS sample_kws,
+                           o.sample_papers AS sample_papers
+                """).data()
 
-            edge_rows = s.run("""
-                MATCH (a:Ontology)-[r:CO_OCCURS]->(b:Ontology)
-                RETURN a.code AS source, b.code AS target, r.weight AS weight
-                ORDER BY r.weight DESC
-            """).data()
+                edge_rows = s.run("""
+                    MATCH (a:Ontology)-[r:CO_OCCURS]->(b:Ontology)
+                    RETURN a.code AS source, b.code AS target, r.weight AS weight
+                    ORDER BY r.weight DESC
+                """).data()
 
-        nodes = [{"data": {
-            "id":            r["code"],
-            "label":         f"{r['emoji']} {r['name']}",
-            "code":          r["code"],
-            "color":         r["color"],
-            "paper_count":   r["paper_count"]   or 0,
-            "keyword_count": r["keyword_count"] or 0,
-            "sample_kws":    r["sample_kws"]    or [],
-            "sample_papers": json.loads(r["sample_papers"]) if r["sample_papers"] else [],
-        }} for r in onto_rows]
+            nodes = [{"data": {
+                "id":            r["code"],
+                "label":         f"{r['emoji']} {r['name']}",
+                "code":          r["code"],
+                "color":         r["color"],
+                "paper_count":   r["paper_count"]   or 0,
+                "keyword_count": r["keyword_count"] or 0,
+                "sample_kws":    r["sample_kws"]    or [],
+                "sample_papers": json.loads(r["sample_papers"]) if r["sample_papers"] else [],
+            }} for r in onto_rows]
 
-        edges = [{"data": {
-            "id":     f"{r['source']}-{r['target']}",
-            "source": r["source"],
-            "target": r["target"],
-            "weight": r["weight"],
-        }} for r in edge_rows]
+            edges = [{"data": {
+                "id":     f"{r['source']}-{r['target']}",
+                "source": r["source"],
+                "target": r["target"],
+                "weight": r["weight"],
+            }} for r in edge_rows]
 
-        logger.info(f"Returning viz: {len(nodes)} nodes, {len(edges)} edges")
-        return {"nodes": nodes, "edges": edges, "papers_by_ontology": {}}
+            logger.info(f"Returning viz: {len(nodes)} nodes, {len(edges)} edges")
+            return {"nodes": nodes, "edges": edges, "papers_by_ontology": {}}
+        except Exception as e:
+            logger.warning(f"[neo4j offline] Failed to fetch ontology graph viz: {e}")
+            return {"nodes": [], "edges": [], "papers_by_ontology": {}}
 
     def get_ontology_node(self, code: str) -> dict | None:
         """Fetch a single ontology node's stored data — used by expand to
         get its paper_ids pool plus display metadata (name/color/emoji)."""
-        with self.driver.session() as s:
-            row = s.run("""
-                MATCH (o:Ontology {code: $code})
-                RETURN o.name AS name, o.emoji AS emoji, o.color AS color,
-                       o.paper_count AS paper_count, o.paper_ids AS paper_ids
-            """, code=code).single()
-        if not row:
+        if not self.driver:
             return None
-        return {
-            "name": row["name"], "emoji": row["emoji"], "color": row["color"],
-            "paper_count": row["paper_count"] or 0,
-            "paper_ids": row["paper_ids"] or [],
-        }
+        try:
+            with self.driver.session() as s:
+                row = s.run("""
+                    MATCH (o:Ontology {code: $code})
+                    RETURN o.name AS name, o.emoji AS emoji, o.color AS color,
+                           o.paper_count AS paper_count, o.paper_ids AS paper_ids
+                """, code=code).single()
+            if not row:
+                return None
+            return {
+                "name": row["name"], "emoji": row["emoji"], "color": row["color"],
+                "paper_count": row["paper_count"] or 0,
+                "paper_ids": row["paper_ids"] or [],
+            }
+        except Exception as e:
+            logger.warning(f"[neo4j offline] Failed to fetch single ontology node: {e}")
+            return None
 
 
 # ─────────────────────────────────────────────

@@ -1130,11 +1130,11 @@ function StepAyurveda({ state, updateState }: StepProps) {
             <div className="pt-2 border-t border-slate-800 space-y-2">
               <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Bio-Entity Mapping Paths</span>
               <div className="space-y-2.5">
-                {state.ayurveda.correlationPaths.map((p, idx) => {
-                  const parts = p.split(/ -\[(.*?)\]-> /);
+                {state.ayurveda.correlationPaths.map((p: any, idx: number) => {
+                  const parts = String(p).split(/ -\[(.*?)\]-> /);
                   return (
                     <div key={idx} className="flex flex-wrap items-center gap-2 bg-slate-950/50 p-2.5 rounded-lg border border-slate-800 text-xs font-mono">
-                      {parts.map((part, pIdx) => {
+                      {parts.map((part: string, pIdx: number) => {
                         const isRel = pIdx % 2 === 1;
                         if (isRel) {
                           return (

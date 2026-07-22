@@ -13,7 +13,7 @@ interface Collection {
   updated_at: string;
 }
 
-interface CollectionsPanelProps = {};
+interface CollectionsPanelProps {}
 
 export const CollectionsPanel: React.FC<CollectionsPanelProps> = () => {
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -27,7 +27,7 @@ export const CollectionsPanel: React.FC<CollectionsPanelProps> = () => {
 
   // Determine if we are in dev mode (for authentication)
   const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-  const authHeaders = isDevMode
+  const authHeaders: Record<string, string> = isDevMode
     ? { Authorization: `Bearer dev-token` }
     : {};
 
