@@ -39,9 +39,9 @@ NEO4J_USER     = os.getenv("NEO4J_USER",     "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "rishiai123")
 ANTHROPIC_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 
-TOP_K_PAPERS   = int(os.getenv("TOP_K_PAPERS",    "100"))
+TOP_K_PAPERS   = int(os.getenv("TOP_K_PAPERS",    "80"))
 MIN_EDGE_WEIGHT= int(os.getenv("MIN_EDGE_WEIGHT",  "1"))
-MAX_CONCEPTS   = int(os.getenv("MAX_CONCEPTS",    "100"))
+MAX_CONCEPTS   = int(os.getenv("MAX_CONCEPTS",    "80"))
 
 # Co-occurrence ("just showed up together") edges are a fallback for concept
 # pairs the LLM didn't explicitly relate. Left uncapped they explode
@@ -338,7 +338,7 @@ class PostgresClient:
 LLM_PROVIDER    = os.getenv("LLM_PROVIDER", "ollama").lower()   # "gemini" | "ollama"
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
-OLLAMA_TIMEOUT  = int(os.getenv("OLLAMA_TIMEOUT", "180"))
+OLLAMA_TIMEOUT  = int(os.getenv("OLLAMA_TIMEOUT", "300"))
 
 def _build_normalization_prompt(query: str, unique_kws: list[str]) -> str:
     return f"""You are a biomedical knowledge graph expert building a research knowledge graph.
@@ -464,7 +464,7 @@ def normalize_concepts_with_llm(query: str, keywords: list[str]) -> dict:
     2. Return {raw_keyword: canonical_concept} mapping
     3. Only keep concepts relevant to the query
     """
-    unique_kws = list(dict.fromkeys([k.lower().strip() for k in keywords if k]))[:200]
+    unique_kws = list(dict.fromkeys([k.lower().strip() for k in keywords if k]))[:100]
     prompt = _build_normalization_prompt(query, unique_kws)
 
     if LLM_PROVIDER == "ollama":
