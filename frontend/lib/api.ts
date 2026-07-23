@@ -24,9 +24,9 @@ export interface PaperListResponse {
 
 function getBaseUrl(): string {
   if (typeof window !== "undefined") {
-    return `http://${window.location.hostname}:8000/api/v1`;
+    return `http://${window.location.hostname === "localhost" ? "127.0.0.1" : window.location.hostname}:8002/api/v1`;
   }
-  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
+  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8002/api/v1";
 }
 
 export async function fetchPapers(
@@ -433,8 +433,8 @@ export async function fetchDemoStatsAPI(): Promise<any> {
 // --- RISHI-AI ORIGINAL ENDPOINTS ---
 
 const RISHI_BASE_URL = typeof window !== "undefined"
-  ? `http://${window.location.hostname === "localhost" ? "127.0.0.1" : window.location.hostname}:8001`
-  : process.env.NEXT_PUBLIC_RISHI_API_URL || "http://127.0.0.1:8001";
+  ? `http://${window.location.hostname === "localhost" ? "127.0.0.1" : window.location.hostname}:8000`
+  : process.env.NEXT_PUBLIC_RISHI_API_URL || "http://127.0.0.1:8000";
 
 export interface SupportingPaper {
   id:                    string;
