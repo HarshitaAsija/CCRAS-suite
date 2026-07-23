@@ -12,8 +12,8 @@ DB_CONFIG = {
     "password": os.environ.get("CCRAS_DB_PASSWORD", "anshi_123"),
 }
 
-OLLAMA_GENERATE_URL     = os.environ.get("OLLAMA_URL",         "http://localhost:11434/api/generate")
-OLLAMA_EMBED_URL        = os.environ.get("OLLAMA_EMBED_URL",   "http://localhost:11434/api/embeddings")
+OLLAMA_GENERATE_URL     = os.environ.get("OLLAMA_URL",         "http://127.0.0.1:11434/api/generate")
+OLLAMA_EMBED_URL        = os.environ.get("OLLAMA_EMBED_URL",   "http://127.0.0.1:11434/api/embeddings")
 OLLAMA_MODEL            = os.environ.get("OLLAMA_MODEL",       "llama3")
 OLLAMA_EMBED_MODEL      = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 OLLAMA_GENERATE_TIMEOUT = int(os.environ.get("OLLAMA_GENERATE_TIMEOUT", "300"))

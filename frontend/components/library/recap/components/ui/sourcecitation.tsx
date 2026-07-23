@@ -73,3 +73,4 @@ export function SourceCitationCard({
       </div>
     </Card>
   );
+}

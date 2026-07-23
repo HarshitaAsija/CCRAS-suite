@@ -4,7 +4,7 @@ import cytoscape, { Core, ElementDefinition } from "cytoscape";
 import { Sparkles, ZoomIn, ZoomOut, Loader2, AlertCircle, Maximize2 } from "lucide-react";
 
 // ── Config ────────────────────────────────────────────────────────────
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 const GRAPH_ENDPOINT = `${API_BASE_URL}/api/v1/graph/`;
 
 // ── Types (match get_graph_for_viz's Cytoscape-style payload) ──────────

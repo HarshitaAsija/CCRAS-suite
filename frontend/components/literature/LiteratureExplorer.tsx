@@ -242,8 +242,8 @@ export function LiteratureExplorer() {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchPapers(""); // empty query = fetch all/default
-        const transformed = data.map((paper: any) => ({
+        const data = await fetchPapers(1, 50);
+        const transformed = (data.results || []).map((paper: any) => ({
           id: paper.id,
           title: paper.title,
           authors: Array.isArray(paper.authors) ? paper.authors.join(", ") : String(paper.authors),

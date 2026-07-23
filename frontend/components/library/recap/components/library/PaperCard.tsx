@@ -45,7 +45,7 @@ export default function PaperCard({
       </h3>
 
       {/* Authors */}
-      {paper.authors?.length > 0 && (
+      {paper.authors && paper.authors.length > 0 && (
         <p className="text-xs text-gray-500 truncate">
           {paper.authors.join(", ")}
         </p>

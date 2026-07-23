@@ -15,7 +15,7 @@ interface Message {
   confidence_level?: string;
 }
 
-interface RagPanelProps = {};
+interface RagPanelProps {}
 
 export const RagPanel: React.FC<RagPanelProps> = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -25,11 +25,11 @@ export const RagPanel: React.FC<RagPanelProps> = () => {
     // Generate a random session ID for demo purposes
     return Math.random().toString(36).substring(2, 15);
   });
-  const messagesEndRef = useRef<div>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Determine if we are in dev mode (for authentication)
   const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-  const authHeaders = isDevMode
+  const authHeaders: Record<string, string> = isDevMode
     ? { Authorization: `Bearer dev-token` }
     : {};
 

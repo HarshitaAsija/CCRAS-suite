@@ -6,7 +6,7 @@ import { normalizeAuthors, normalizeKeywords } from "./normalize";
 
 // Base URL WITHOUT trailing /api — all calls below add /api explicitly,
 // so this one constant works for every endpoint in this file.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 const DEFAULT_USER_ID = "11111111-1111-1111-1111-111111111111";
 
 // ============ SHARED TYPES ============
@@ -246,6 +246,12 @@ export const paperApi = {
     return response.json();
   },
 };
+
+export async function getAnalytics(): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/api/analytics`);
+  if (!res.ok) return { total_searches: 0, avg_response_time_ms: 0, by_type: {}, top_queries: [] };
+  return res.json();
+}
 
 // ============ SEARCH API ============
 

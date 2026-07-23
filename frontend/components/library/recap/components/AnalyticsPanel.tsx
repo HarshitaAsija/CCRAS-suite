@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getAnalytics } from "../lib/api";
 import { BarChart3, Loader2 } from "lucide-react";
 
@@ -89,7 +89,7 @@ export function AnalyticsPanel({ open, onClose }: AnalyticsPanelProps) {
                   </div>
                 ))}
               </div>
-            )
+            </div>
           )}
 
           {data.top_queries.length > 0 && (
@@ -103,7 +103,7 @@ export function AnalyticsPanel({ open, onClose }: AnalyticsPanelProps) {
                   </div>
                 ))}
               </div>
-            )
+            </div>
           )}
 
           {data.total_searches === 0 && (

@@ -4,9 +4,9 @@
 
 "use client";
 import { normalizeAuthors, normalizeKeywords } from "@/lib/normalize";
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader } from "./card";
+import { Badge } from "./badge";
+import { Button } from "./button";
 import { Paper } from "@/types/paper";
 import { Bookmark, BookmarkCheck, ExternalLink, FolderPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -16,7 +16,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "./dropdown-menu";
 
 interface PaperCardProps {
   paper: Paper;
@@ -96,7 +96,7 @@ export function PaperCard({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-gray-500 hover:text-indigo-700 hover:bg-indigo-50"
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e: React.MouseEvent) => e.stopPropagation()}
                   >
                     <FolderPlus className="h-4 w-4" />
                   </Button>
@@ -106,7 +106,7 @@ export function PaperCard({
                     <DropdownMenuItem
                       key={collection.id}
                       className="focus:bg-purple-50 focus:text-black"
-                      onClick={(e) => {
+                      onClick={(e: React.MouseEvent) => {
                         e.stopPropagation();
                         onAddToCollection?.(paper.id, collection.id);
                       }}
@@ -148,7 +148,7 @@ export function PaperCard({
             key={keyword}
             variant="secondary"
             className="bg-purple-100 text-purple-800 hover:bg-purple-200 cursor-pointer text-xs"
-            onClick={(e) => handleKeywordClick(keyword, e)}
+            onClick={(e: React.MouseEvent) => handleKeywordClick(keyword, e)}
           >
             {keyword}
           </Badge>
@@ -167,7 +167,7 @@ export function PaperCard({
             variant="ghost"
             size="sm"
             className="text-xs text-gray-600 hover:text-purple-700 hover:bg-purple-50 h-7"
-            onClick={(e) => {
+            onClick={(e: React.MouseEvent) => {
               e.stopPropagation();
               window.open(`https://doi.org/${paper.doi}`, "_blank");
             }}

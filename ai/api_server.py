@@ -1,4 +1,13 @@
 # api_server.py
+import sys
+import io
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
@@ -15,7 +24,7 @@ app = FastAPI(title="RISHI-AI API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,7 +34,10 @@ _jobs: dict = {}
 
 
 def get_conn():
-    return psycopg2.connect(**DB_CONFIG, cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        return psycopg2.connect(**DB_CONFIG, cursor_factory=psycopg2.extras.RealDictCursor)
+    except Exception as e:
+        return None
 
 
 # ── helpers ────────────────────────────────────────────────────
@@ -187,6 +199,16 @@ def get_gaps(
     sort_col = sort_col_map.get(sort, "novelty_score")
 
     conn = get_conn()
+    if not conn:
+        # Offline JSON fallback
+        try:
+            with open("research_gaps_output.json", "r", encoding="utf-8") as f:
+                data = _json.load(f)
+                gaps = data.get("gaps", [])
+                return {"gaps": gaps, "total": len(gaps)}
+        except Exception:
+            return {"gaps": [], "total": 0}
+
     cur  = conn.cursor()
     try:
         conds  = ["g.status IN ('scored','seeded')"]
@@ -374,7 +396,7 @@ def _run_pipeline(job_id: str, topic: str):
             progress_callback=lambda m: _jobs[job_id].update({"message": m}),
         )
 
-        gaps = _fetch_gaps_for_topic(topic)
+        gaps = _fetch_gaps_for_topic(topic, result.get("gap_cards", []))
         _jobs[job_id]["status"]  = "done"
         _jobs[job_id]["message"] = (
             f"Done — {len(gaps)} gaps, {hyp_result['seeded']} hypotheses for '{topic}'"
@@ -390,8 +412,47 @@ def _run_pipeline(job_id: str, topic: str):
         _jobs[job_id]["error"]  = tb   # full traceback shown in frontend too
 
         
-def _fetch_gaps_for_topic(topic: str) -> list:
-    conn = get_conn(); cur = conn.cursor()
+def _fetch_gaps_for_topic(topic: str, in_memory_cards: list = None) -> list:
+    conn = get_conn()
+    if not conn:
+        if in_memory_cards:
+            print("  [offline fallback] Using newly generated in-memory gap cards")
+            out = []
+            for c in in_memory_cards:
+                supporting = []
+                for p in c.get("supporting_papers", []):
+                    supporting.append({
+                        "id": p.get("paper_id", ""),
+                        "title": p.get("title", "Untitled"),
+                        "year": p.get("year"),
+                        "pmid": "",
+                        "doi": p.get("doi", ""),
+                        "link": p.get("paper_url") or p.get("link"),
+                        "paper_url": p.get("paper_url") or p.get("link"),
+                        "gap_specific_abstract": p.get("gap_specific_abstract", ""),
+                        "citation_count": None,
+                    })
+                out.append({
+                    "id": c.get("gap_id") or "gap_000",
+                    "gap_id": c.get("gap_id") or "gap_000",
+                    "topic": topic,
+                    "domain": (c.get("domain") or "GENERAL").upper(),
+                    "subdomain": (c.get("subdomain") or "").upper(),
+                    "title": c.get("gap_title") or c.get("title") or "",
+                    "description": c.get("gap_description") or c.get("description") or "",
+                    "novelty_score": c.get("novelty_score"),
+                    "feasibility_score": c.get("feasibility_score"),
+                    "study_count": c.get("supporting_paper_count") or len(supporting),
+                    "last_published_year": None,
+                    "status": "seeded",
+                    "related_entities": {},
+                    "cluster_distance": None,
+                    "supporting_papers": supporting,
+                })
+            return out
+        return []
+
+    cur = conn.cursor()
     try:
         cur.execute("""
             SELECT g.id, g.gap_id, g.title, g.description, g.domain, g.subdomain,
@@ -410,6 +471,43 @@ def _fetch_gaps_for_topic(topic: str) -> list:
         print(f"_fetch_gaps_for_topic error: {e}")
         gaps = []
     cur.close(); conn.close()
+    
+    if not gaps and in_memory_cards:
+        print("  [offline fallback] Database returned 0 gaps, using newly generated in-memory gap cards")
+        out = []
+        for c in in_memory_cards:
+            supporting = []
+            for p in c.get("supporting_papers", []):
+                supporting.append({
+                    "id": p.get("paper_id", ""),
+                    "title": p.get("title", "Untitled"),
+                    "year": p.get("year"),
+                    "pmid": "",
+                    "doi": p.get("doi", ""),
+                    "link": p.get("paper_url") or p.get("link"),
+                    "paper_url": p.get("paper_url") or p.get("link"),
+                    "gap_specific_abstract": p.get("gap_specific_abstract", ""),
+                    "citation_count": None,
+                })
+            out.append({
+                "id": c.get("gap_id") or "gap_000",
+                "gap_id": c.get("gap_id") or "gap_000",
+                "topic": topic,
+                "domain": (c.get("domain") or "GENERAL").upper(),
+                "subdomain": (c.get("subdomain") or "").upper(),
+                "title": c.get("gap_title") or c.get("title") or "",
+                "description": c.get("gap_description") or c.get("description") or "",
+                "novelty_score": c.get("novelty_score"),
+                "feasibility_score": c.get("feasibility_score"),
+                "study_count": c.get("supporting_paper_count") or len(supporting),
+                "last_published_year": None,
+                "status": "seeded",
+                "related_entities": {},
+                "cluster_distance": None,
+                "supporting_papers": supporting,
+            })
+        return out
+
     return gaps
 
 
