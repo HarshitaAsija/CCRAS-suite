@@ -720,7 +720,6 @@ def save_gap_cards_to_db(output, paper_ids):
         conn = get_conn()
     except Exception as e:
         print(f"PostgreSQL connection failed ({e}). Skipping database save (running in offline mode).")
-        import uuid
         id_map = {}
         for card in output.get("gap_cards", []):
             id_map[card["gap_id"]] = str(uuid.uuid4())
