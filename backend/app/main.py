@@ -60,6 +60,15 @@ try:
 except Exception as e:
     logger.warning(f"ontology_router skipped: {e}")
 
+# Snowball router
+try:
+    from app.api.routers.snowball_router import router as snowball_router
+
+    app.include_router(snowball_router, prefix=settings.API_V1_STR)
+    logger.info("snowball_router loaded")
+except Exception as e:
+    logger.warning(f"snowball_router skipped: {e}")
+
 # Paper router
 try:
     from app.api.routers.paper_router import router as paper_router

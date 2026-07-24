@@ -541,7 +541,7 @@ export async function getSnowballingResults(
 }> {
   try {
     const encodedDoi = encodeURIComponent(doi);
-    const res = await fetch(`${API_BASE_URL}/snowball/${encodedDoi}`, {
+    const res = await fetch(`${API_BASE_URL}/api/snowball/${encodedDoi}`, {
       method: "POST",
     });
 
