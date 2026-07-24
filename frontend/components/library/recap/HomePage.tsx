@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -11,6 +11,8 @@ import {
   RefreshCw,
   TrendingUp,
   Sparkles,
+  Library,
+  Upload,
 } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
@@ -73,6 +75,22 @@ const QUICK_ACCESS = [
     href: "/analytics",
     color: "text-fuchsia-600",
     bg: "bg-fuchsia-100",
+  },
+  {
+    icon: Library,
+    label: "Library",
+    desc: "Manage your personal research library and collections",
+    href: "/library",
+    color: "text-indigo-600",
+    bg: "bg-indigo-100",
+  },
+  {
+    icon: Upload,
+    label: "Upload Papers",
+    desc: "Upload and organize your own research documents",
+    href: "/upload",
+    color: "text-rose-600",
+    bg: "bg-rose-100",
   },
 ];
 
@@ -241,6 +259,8 @@ export default function HomePage({ setActiveTab }: { setActiveTab: (tab: string)
     }
   };
 
+  const cancelledRef = useRef(false);
+
   const fetchTrending = useCallback(async (isInitial: boolean) => {
     if (isInitial) setTrendingLoading(true);
     try {
@@ -255,13 +275,16 @@ export default function HomePage({ setActiveTab }: { setActiveTab: (tab: string)
         trend: Array.isArray(item.trend) ? item.trend : undefined,
       }));
 
+      if (cancelledRef.current) return;
       setTrendingTopics(processed);
+      if (cancelledRef.current) return;
       setTrendingError(null);
     } catch (err) {
       console.error("Failed to fetch trending topics:", err);
+      if (cancelledRef.current) return;
       if (isInitial) setTrendingError("Couldn't load trending topics.");
     } finally {
-      if (isInitial) setTrendingLoading(false);
+      if (isInitial && !cancelledRef.current) setTrendingLoading(false);
     }
   }, [API_BASE_URL]);
 
@@ -274,6 +297,7 @@ export default function HomePage({ setActiveTab }: { setActiveTab: (tab: string)
 
       console.log("dashboard/stats raw response:", data);
 
+      if (cancelledRef.current) return;
       setPlatformStats({
         papersIndexed: data.growing || data.papers_indexed || 0,
         fullTexts: data.expanding || data.full_texts || 0,
@@ -281,17 +305,20 @@ export default function HomePage({ setActiveTab }: { setActiveTab: (tab: string)
         journals: data.curated || data.journals || 0,
         dataQuality: data.verified || data.data_quality || "N/A",
       });
+      if (cancelledRef.current) return;
       setStatsError(null);
     } catch (err) {
       console.error("Failed to fetch dashboard stats:", err);
+      if (cancelledRef.current) return;
       if (isInitial) setStatsError("Couldn't load platform stats.");
     } finally {
-      if (isInitial) setStatsLoading(false);
+      if (isInitial && !cancelledRef.current) setStatsLoading(false);
     }
   }, [API_BASE_URL]);
 
   useEffect(() => {
     let firstRun = true;
+    cancelledRef.current = false;
 
     const tick = () => {
       fetchTrending(firstRun);
@@ -301,7 +328,10 @@ export default function HomePage({ setActiveTab }: { setActiveTab: (tab: string)
 
     tick();
     const interval = setInterval(tick, 7000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      cancelledRef.current = true;
+    };
   }, [fetchTrending, fetchStats]);
 
   return (

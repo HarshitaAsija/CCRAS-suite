@@ -756,7 +756,7 @@ export async function uploadPapers(
 
   if (!response.ok) throw new Error('Upload failed');
   const data = await response.json();
-  
+
   return data.files.map((f: any) => ({
     id: f.id || Date.now().toString(),
     name: f.filename,
@@ -764,4 +764,13 @@ export async function uploadPapers(
     status: 'completed' as const,
     progress: 100,
   }));
+}
+
+export async function getAnalytics(): Promise<any> {
+  return {
+    total_searches: 0,
+    avg_response_time_ms: 0,
+    by_type: {},
+    top_queries: []
+  };
 }

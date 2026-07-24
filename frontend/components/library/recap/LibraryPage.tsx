@@ -1,6 +1,5 @@
 ﻿'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import { collectionApi, paperApi, LibraryCollection, LibraryPaper } from './lib/api';
 import { getUserId } from './lib/auth';
 import { toast } from 'sonner';
@@ -37,6 +36,8 @@ import { Toaster } from 'sonner';
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ');
+type Tab = "home" | "search" | "library" | "rag" | "snowballing" | "analytics" | "upload";
+
 }
 
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -352,8 +353,10 @@ function LibraryPageBackdrop() {
 
 
 
-export default function LibraryPage() {
-  const router = useRouter();
+interface LibraryPageProps {
+  onNavigate?: (tab: string) => void;
+}
+export default function LibraryPage({ onNavigate }: LibraryPageProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [collections, setCollections] = useState<LibraryCollection[]>([]);
   const [papers, setPapers] = useState<LibraryPaper[]>([]);
@@ -396,7 +399,9 @@ export default function LibraryPage() {
       setError(null);
     } catch (err) {
       console.error('Error fetching library data:', err);
-      setError('Failed to load library. Please try again.');
+      setError('Failed to load library. Please check your connection and try again.');
+      setCollections([]);
+      setPapers([]);
     } finally {
       setLoading(false);
     }
@@ -542,16 +547,14 @@ export default function LibraryPage() {
       </div>
     );
   }
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-white">
-        <div className="text-red-500">{error}</div>
-      </div>
-    );
-  }
 
   return (
     <>
+{error && (
+  <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-md">
+    <p className="text-sm text-red-800">{error}</p>
+  </div>
+)}
       <div className="relative bg-gradient-to-b from-white via-violet-50/60 to-violet-100/50 text-[#211d2e] overflow-hidden">
         {/* Ambient backdrop: 3 large animated library motifs + soft color wash behind the whole page */}
         <LibraryPageBackdrop />
@@ -882,7 +885,13 @@ export default function LibraryPage() {
                         Save papers to access them anytime, anywhere.
                       </p>
                       <Button
-                        onClick={() => router.push('/search')}
+                        onClick={() => {
+                                if (onNavigate) {
+                                  onNavigate('search');
+                                } else {
+                                  console.warn('Navigation callback not provided');
+                                }
+                              }}
                         className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:opacity-90 text-white rounded-full px-6"
                       >
                         <Plus className="mr-2 h-4 w-4" />

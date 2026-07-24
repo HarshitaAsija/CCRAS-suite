@@ -3,7 +3,7 @@
 
 "use client";
 
-import RagPage from '../../components/library/recap/pages/rag/page';
+import RagPage from '../../components/library/recap/RagPage';
 
 export default function RagRoute() {
   return (

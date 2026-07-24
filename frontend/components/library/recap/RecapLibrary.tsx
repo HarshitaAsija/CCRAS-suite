@@ -20,11 +20,11 @@ export function RecapLibrary() {
 
   return (
     <>
-      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <Sidebar activeTab={activeTab} onTabChange={(tab) => setActiveTab(tab as typeof activeTab)} />
       <div className="md:ml-64 min-h-screen bg-gradient-to-b from-[#F8F6FD] to-white">
-        {activeTab === "home" && <HomePage setActiveTab={setActiveTab} />}
+        {activeTab === "home" && <HomePage setActiveTab={(tab: string) => setActiveTab(tab as typeof activeTab)} />}
         {activeTab === "search" && <SearchPage />}
-        {activeTab === "library" && <LibraryPage />}
+        {activeTab === "library" && <LibraryPage onNavigate={(tab: string) => setActiveTab(tab)} />}
         {activeTab === "rag" && <RagPage />}
         {activeTab === "snowballing" && <SnowballingPage />}
         {activeTab === "analytics" && <AnalyticsPage />}
