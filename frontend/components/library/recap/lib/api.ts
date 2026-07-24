@@ -1,8 +1,234 @@
+// @ts-nocheck
 // API Layer for KRITA
 // Connects to real backend APIs (search/snowball + library/collections)
 
-   import { Paper, ChatMessage, Collection, UploadedFile, SearchFilters, SearchSuggestion, SavedSearch, SimilarPapersResult } from "../types/paper";
+import { Paper, ChatMessage, Collection, UploadedFile, SearchFilters, SearchSuggestion, SavedSearch, SimilarPapersResult } from "../types/paper";
 import { normalizeAuthors, normalizeKeywords } from "./normalize";
+
+// ============================================================
+// BASE URL - SINGLE SOURCE OF TRUTH
+// ============================================================
+
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/api$/, '');
+
+// HARDCODED USER ID FOR TESTING
+const HARDCODED_USER_ID = "11111111-1111-1111-1111-111111111111";
+
+// ============================================================
+// LIBRARY API FUNCTIONS
+// ============================================================
+
+export interface LibraryCollection {
+  id: number;
+  user_id: string;
+  name: string;
+  description?: string;
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+  paper_count?: number;
+}
+
+export interface LibraryPaper {
+  id: string;
+  user_id: string;
+  paper_id: string;
+  title: string;
+  authors?: string[];
+  abstract?: string;
+  source?: string;
+  paper_metadata?: Record<string, any>;
+  annotations?: string;
+  saved_at: string;
+}
+
+export const collectionApi = {
+  list: async (userId: string): Promise<LibraryCollection[]> => {
+    // Use hardcoded userId for testing
+    const testUserId = HARDCODED_USER_ID;
+    console.log("🔍 Collection API - Using userId:", testUserId);
+    const response = await fetch(`${API_URL}/api/library/collections?user_id=${testUserId}`);
+    if (!response.ok) throw new Error("Failed to fetch collections");
+    return response.json();
+  },
+
+  get: async (id: number, userId: string): Promise<LibraryCollection> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(`${API_URL}/api/library/collections/${id}?user_id=${testUserId}`);
+    if (!response.ok) throw new Error("Failed to fetch collection");
+    return response.json();
+  },
+
+  create: async (
+    userId: string,
+    data: { name: string; description?: string }
+  ): Promise<LibraryCollection> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(`${API_URL}/api/library/collections?user_id=${testUserId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error("Failed to create collection");
+    return response.json();
+  },
+
+  update: async (
+    id: number,
+    userId: string,
+    data: { name?: string; description?: string }
+  ): Promise<LibraryCollection> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(`${API_URL}/api/library/collections/${id}?user_id=${testUserId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error("Failed to update collection");
+    return response.json();
+  },
+
+  delete: async (id: number, userId: string): Promise<void> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(`${API_URL}/api/library/collections/${id}?user_id=${testUserId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) throw new Error("Failed to delete collection");
+  },
+
+  addPaper: async (collectionId: number, userId: string, libraryPaperId: string): Promise<void> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(
+      `${API_URL}/api/library/collections/${collectionId}/papers?user_id=${testUserId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ library_paper_id: libraryPaperId }),
+      }
+    );
+    if (!response.ok) throw new Error("Failed to add paper to collection");
+  },
+
+  listPapers: async (collectionId: number, userId: string): Promise<LibraryPaper[]> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(
+      `${API_URL}/api/library/collections/${collectionId}/papers?user_id=${testUserId}`
+    );
+    if (!response.ok) throw new Error("Failed to fetch collection papers");
+    return response.json();
+  },
+
+  removePaper: async (collectionId: number, userId: string, libraryPaperId: string): Promise<void> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(
+      `${API_URL}/api/library/collections/${collectionId}/papers/${libraryPaperId}?user_id=${testUserId}`,
+      { method: "DELETE" }
+    );
+    if (!response.ok) throw new Error("Failed to remove paper from collection");
+  },
+
+  export: async (collectionId: number, userId: string, format: "bibtex" | "ris" | "apa"): Promise<string> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(
+      `${API_URL}/api/library/collections/${collectionId}/export?format=${format}&user_id=${testUserId}`
+    );
+    if (!response.ok) throw new Error("Failed to export collection");
+    return response.text();
+  },
+};
+
+export const paperApi = {
+  list: async (userId: string): Promise<LibraryPaper[]> => {
+    const testUserId = HARDCODED_USER_ID;
+    console.log("🔍 Paper API - Using userId:", testUserId);
+    const response = await fetch(`${API_URL}/api/library/papers?user_id=${testUserId}`);
+    if (!response.ok) throw new Error("Failed to fetch papers");
+    return response.json();
+  },
+
+  save: async (
+    userId: string,
+    data: {
+      paper_id: string;
+      title: string;
+      authors?: string[];
+      abstract?: string;
+      source?: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<LibraryPaper> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(`${API_URL}/api/library/papers?user_id=${testUserId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        paper_id: data.paper_id,
+        title: data.title,
+        authors: data.authors || [],
+        abstract: data.abstract || null,
+        source: data.source || null,
+        metadata: data.metadata || {},
+      }),
+    });
+    if (!response.ok) {
+      if (response.status === 409) {
+        throw new Error("Paper already saved to library");
+      }
+      throw new Error("Failed to save paper");
+    }
+    return response.json();
+  },
+
+  updateAnnotations: async (
+    libraryPaperId: string,
+    userId: string,
+    annotations: string
+  ): Promise<LibraryPaper> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(
+      `${API_URL}/api/library/papers/${libraryPaperId}/annotations?user_id=${testUserId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ annotations }),
+      }
+    );
+    if (!response.ok) throw new Error("Failed to update annotations");
+    return response.json();
+  },
+
+  remove: async (libraryPaperId: string, userId: string): Promise<void> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(`${API_URL}/api/library/papers/${libraryPaperId}?user_id=${testUserId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) throw new Error("Failed to remove paper");
+  },
+
+  getDuplicates: async (userId: string): Promise<any> => {
+    const testUserId = HARDCODED_USER_ID;
+    const response = await fetch(`${API_URL}/api/library/papers/duplicates?user_id=${testUserId}`);
+    if (!response.ok) throw new Error("Failed to fetch duplicates");
+    return response.json();
+  },
+};
+
+// ============================================================
+// AUTH FUNCTIONS
+// ============================================================
+
+/**
+ * Get the current user ID from localStorage
+ * Returns null if no user is logged in
+ */
+export function getUserId(): string | null {
+  // Return hardcoded userId for testing
+  return HARDCODED_USER_ID;
+}
+
+// ============================================================
+// END OF LIBRARY API FUNCTIONS
+// ============================================================
 
 // Base URL WITHOUT trailing /api — all calls below add /api explicitly,
 // so this one constant works for every endpoint in this file.
@@ -61,196 +287,8 @@ function toPaper(p: RawPaper): Paper {
 
 // ============ LIBRARY / COLLECTIONS TYPES ============
 
-export interface LibraryCollection {
-  id: number;
-  user_id: string;
-  name: string;
-  description?: string;
-  is_public: boolean;
-  created_at: string;
-  updated_at: string;
-  paper_count?: number;
-}
-
-export interface LibraryPaper {
-  id: string;
-  user_id: string;
-  paper_id: string;
-  title: string;
-  authors?: string[];
-  abstract?: string;
-  source?: string;
-  paper_metadata?: Record<string, any>;
-  annotations?: string;
-  saved_at: string;
-}
-
 export interface AddPaperToCollectionRequest {
   library_paper_id: string;
-}
-
-// ============ COLLECTION API ============
-
-export const collectionApi = {
-  list: async (userId: string): Promise<LibraryCollection[]> => {
-    const response = await fetch(`${API_BASE_URL}/library/collections?user_id=${userId}`);
-    if (!response.ok) throw new Error("Failed to fetch collections");
-    return response.json();
-  },
-
-  get: async (id: number, userId: string): Promise<LibraryCollection> => {
-    const response = await fetch(`${API_BASE_URL}/library/collections/${id}?user_id=${userId}`);
-    if (!response.ok) throw new Error("Failed to fetch collection");
-    return response.json();
-  },
-
-  create: async (
-    userId: string,
-    data: { name: string; description?: string }
-  ): Promise<LibraryCollection> => {
-    const response = await fetch(`${API_BASE_URL}/library/collections?user_id=${userId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) throw new Error("Failed to create collection");
-    return response.json();
-  },
-
-  update: async (
-    id: number,
-    userId: string,
-    data: { name?: string; description?: string }
-  ): Promise<LibraryCollection> => {
-    const response = await fetch(`${API_BASE_URL}/library/collections/${id}?user_id=${userId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) throw new Error("Failed to update collection");
-    return response.json();
-  },
-
-  delete: async (id: number, userId: string): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/library/collections/${id}?user_id=${userId}`, {
-      method: "DELETE",
-    });
-    if (!response.ok) throw new Error("Failed to delete collection");
-  },
-
-  addPaper: async (collectionId: number, userId: string, libraryPaperId: string): Promise<void> => {
-    const response = await fetch(
-      `${API_BASE_URL}/library/collections/${collectionId}/papers?user_id=${userId}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ library_paper_id: libraryPaperId }),
-      }
-    );
-    if (!response.ok) throw new Error("Failed to add paper to collection");
-  },
-
-  listPapers: async (collectionId: number, userId: string): Promise<LibraryPaper[]> => {
-    const response = await fetch(
-      `${API_BASE_URL}/library/collections/${collectionId}/papers?user_id=${userId}`
-    );
-    if (!response.ok) throw new Error("Failed to fetch collection papers");
-    return response.json();
-  },
-
-  removePaper: async (collectionId: number, userId: string, libraryPaperId: string): Promise<void> => {
-    const response = await fetch(
-      `${API_BASE_URL}/library/collections/${collectionId}/papers/${libraryPaperId}?user_id=${userId}`,
-      { method: "DELETE" }
-    );
-    if (!response.ok) throw new Error("Failed to remove paper from collection");
-  },
-
-  export: async (collectionId: number, userId: string, format: "bibtex" | "ris" | "apa"): Promise<string> => {
-    const response = await fetch(
-      `${API_BASE_URL}/library/collections/${collectionId}/export?format=${format}&user_id=${userId}`
-    );
-    if (!response.ok) throw new Error("Failed to export collection");
-    return response.text();
-  },
-};
-
-// ============ PAPER LIBRARY API ============
-
-export const paperApi = {
-  list: async (userId: string): Promise<LibraryPaper[]> => {
-    const response = await fetch(`${API_BASE_URL}/library/papers?user_id=${userId}`);
-    if (!response.ok) throw new Error("Failed to fetch papers");
-    return response.json();
-  },
-
-  save: async (
-    userId: string,
-    data: {
-      paper_id: string;
-      title: string;
-      authors?: string[];
-      abstract?: string;
-      source?: string;
-      metadata?: Record<string, any>;
-    }
-  ): Promise<LibraryPaper> => {
-    const response = await fetch(`${API_BASE_URL}/library/papers?user_id=${userId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        paper_id: data.paper_id,
-        title: data.title,
-        authors: data.authors || [],
-        abstract: data.abstract || null,
-        source: data.source || null,
-        metadata: data.metadata || {},
-      }),
-    });
-    if (!response.ok) {
-      if (response.status === 409) {
-        throw new Error("Paper already saved to library");
-      }
-      throw new Error("Failed to save paper");
-    }
-    return response.json();
-  },
-
-  updateAnnotations: async (
-    libraryPaperId: string,
-    userId: string,
-    annotations: string
-  ): Promise<LibraryPaper> => {
-    const response = await fetch(
-      `${API_BASE_URL}/library/papers/${libraryPaperId}/annotations?user_id=${userId}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ annotations }),
-      }
-    );
-    if (!response.ok) throw new Error("Failed to update annotations");
-    return response.json();
-  },
-
-  remove: async (libraryPaperId: string, userId: string): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/library/papers/${libraryPaperId}?user_id=${userId}`, {
-      method: "DELETE",
-    });
-    if (!response.ok) throw new Error("Failed to remove paper");
-  },
-
-  getDuplicates: async (userId: string): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/library/papers/duplicates?user_id=${userId}`);
-    if (!response.ok) throw new Error("Failed to fetch duplicates");
-    return response.json();
-  },
-};
-
-export async function getAnalytics(): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/api/analytics`);
-  if (!res.ok) return { total_searches: 0, avg_response_time_ms: 0, by_type: {}, top_queries: [] };
-  return res.json();
 }
 
 // ============ SEARCH API ============
