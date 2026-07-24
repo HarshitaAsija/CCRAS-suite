@@ -18,26 +18,22 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
+
+# CORS — must be registered BEFORE routers
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(entities_router, prefix="/api/v1")
 app.include_router(study_router, prefix=settings.API_V1_STR)
 app.include_router(study_design_ai_router, prefix=settings.API_V1_STR)
 app.include_router(evidence_adapter_router, prefix=settings.API_V1_STR)
 app.include_router(library_router)
 app.include_router(library_router, prefix=settings.API_V1_STR)
-# CORS
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Ingestion router
 from app.api.routers.ingestion_router import router as ingestion_router

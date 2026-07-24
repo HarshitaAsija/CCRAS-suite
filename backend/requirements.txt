@@ -44,4 +44,4 @@ rapidfuzz>=3.9.0
 # Utilities
 python-dotenv>=1.0.0
 requests>=2.31.0   # needed if using LLM_PROVIDER=ollama
- 
+python-docx>=1.0.0

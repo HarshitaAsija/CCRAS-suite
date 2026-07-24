@@ -253,7 +253,7 @@ def export_docx_endpoint(payload: Dict[str, Any]):
             doc.add_paragraph(f"- {c.get('name', 'Confounder')}: {c.get('mitigation', '')} (Risk level: {c.get('risk', '')})")
             
         # 9. Ayurveda Protocol
-        ayur = state.get('ayurveda', {})
+        ayur = state.get('ayush_protocol', state.get('ayurveda', {}))
         if ayur.get('formulation'):
             doc.add_heading("9. Ayurveda Protocol Specifications", level=1)
             doc.add_paragraph(f"Formulation: {ayur.get('formulation', 'Not specified')}")

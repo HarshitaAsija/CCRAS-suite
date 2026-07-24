@@ -1241,8 +1241,8 @@ class StudyDesignAIService:
         })
         
         # 4. Sample Size
-        sample_params = state.get('sampleSizeParams', {})
-        sample_result = state.get('sampleSizeResult', {})
+        sample_params = state.get('sample_size', state.get('sampleSizeParams', {}))
+        sample_result = state.get('sample_size_result', state.get('sampleSizeResult', {}))
         sections.append({
             "title": "4. Sample Size Calculation",
             "content": f"**Statistical Parameters:**\n" +
@@ -1256,7 +1256,7 @@ class StudyDesignAIService:
         })
         
         # 5. Statistical Analysis Plan
-        stat_plan = state.get('statisticalPlan', {})
+        stat_plan = state.get('statistical_plan', state.get('statisticalPlan', {}))
         sections.append({
             "title": "5. Statistical Analysis Plan",
             "content": f"**Primary Endpoint:** {stat_plan.get('primaryEndpoint', 'Not specified')}\n\n" +
@@ -1267,7 +1267,7 @@ class StudyDesignAIService:
         })
         
         # 6. Eligibility Criteria
-        criteria = state.get('criteria', {})
+        criteria = state.get('eligibility', state.get('criteria', {}))
         sections.append({
             "title": "6. Eligibility Criteria",
             "content": f"**Inclusion Criteria:**\n" + 
@@ -1285,7 +1285,7 @@ class StudyDesignAIService:
             })
         
         # 8. Ayurveda Protocol
-        ayurveda = state.get('ayurveda', {})
+        ayurveda = state.get('ayush_protocol', state.get('ayurveda', {}))
         if ayurveda.get('formulation'):
             sections.append({
                 "title": "8. Ayurveda Protocol Specifications",

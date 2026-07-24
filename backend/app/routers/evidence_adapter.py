@@ -19,8 +19,11 @@ from datetime import datetime
 from sqlalchemy import MetaData, Table, func, inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+import logging
 
 from app.db.session import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/evidence", tags=["evidence-adapter"])
 
@@ -403,6 +406,9 @@ def create_live_brahma_handoff(
                 "Dosage levels and safety margins require formal heavy-metal standardization"
             ],
             "sources": sources,
+            "pico_suggestion": inferred.get("pico", {}),
+            "title_suggestion": inferred.get("title", ""),
+            "ayurveda_suggestion": inferred.get("ayurveda", {}),
             "stats": {
                 "totalCount": len(sources),
                 "highQualityCount": high_quality,

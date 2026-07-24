@@ -418,14 +418,15 @@ export function StudyDesignStudio() {
   };
 
   const isStepCompleted = (i: number) => {
+    const picoFilled = !!(state.pico.population && state.pico.intervention && state.pico.outcome);
     switch (i) {
       case 0: return !!state.researchQuestion;
       case 1: return !!state.handoffData;
-      case 2: return !!(state.pico.population && state.pico.intervention && state.pico.outcome);
+      case 2: return picoFilled;
       case 3: return !!state.hypothesis.primary;
       case 4: return state.studyType.recommended !== "";
-      case 5: return state.sampleSizeResult.total > 0;
-      case 6: return state.statisticalPlan.recommendedTest !== "";
+      case 5: return picoFilled && state.sampleSizeResult.total > 0; // requires PICO first
+      case 6: return picoFilled && state.statisticalPlan.recommendedTest !== ""; // requires PICO first
       case 7: return state.criteria.inclusion.length > 0 || state.criteria.exclusion.length > 0;
       case 8: return state.confounders.length > 0;
       case 9: return !!state.ayurveda.formulation;
@@ -1430,7 +1431,7 @@ function StepExport({ state }: { state: ProtocolState }) {
           {exporting === "html" ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download size={14} />}
           Download / Print HTML Report
         </Button>
-        <Button onClick={downloadJSON} className="h-11 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 flex items-center justify-center gap-2">
+        <Button onClick={downloadJSON} className="h-11 text-xs font-bold bg-slate-300 hover:bg-slate-400 text-slate-900 border border-slate-400 shadow-sm flex items-center justify-center gap-2">
           <Download size={14} />
           Download Raw JSON
         </Button>
