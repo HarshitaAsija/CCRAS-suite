@@ -500,8 +500,8 @@ export default function SnowballingPage() {
       const results = await getSnowballingResults(paper.doi || paper.id, 1);
       setForwardCitations(results.forward);
       setBackwardCitations(results.backward);
-      setBackwardTotalRefs(s.backward_total_refs);
-      setForwardTotalCitations(s.forward_total_citations);
+      setBackwardTotalRefs(results.backward_total_refs);
+      setForwardTotalCitations(results.forward_total_citations);
 
       // Reset tab data
       setKeywordData(null);
