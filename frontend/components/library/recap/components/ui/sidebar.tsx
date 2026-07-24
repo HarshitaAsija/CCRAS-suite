@@ -7,7 +7,7 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { cn } from "../../lib/utils";
+import { cn } from "@/lib/utils";
 import {
   Sparkles,
   Home,
@@ -63,14 +63,14 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:inset-y-0 bg-white border-r border-gray-200 z-50">
+      <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:inset-y-0 bg-white/90 backdrop-blur-md border-r border-gray-200 z-50">
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 py-5 border-b border-gray-200">
-          <div className="h-10 w-10 rounded-xl bg-white border border-gray-300 flex items-center justify-center shadow-sm">
-            <Sparkles className="h-6 w-6 text-black" />
+          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
+            <Sparkles className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-lg text-black">
+            <h1 className="font-bold text-lg bg-gradient-to-r from-purple-700 to-indigo-700 bg-clip-text text-transparent">
               RECAP
             </h1>
             <p className="text-xs text-gray-500 -mt-1">KRITA Platform</p>
@@ -90,14 +90,14 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
                   isActive
-                    ? "bg-gray-100 text-black shadow-sm border border-gray-200"
-                    : "text-black hover:bg-gray-50"
+                    ? "bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-900 shadow-sm"
+                    : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                 )}
               >
                 <Icon
                   className={cn(
                     "h-5 w-5",
-                    isActive ? "text-black" : "text-gray-400"
+                    isActive ? "text-purple-600" : "text-gray-400"
                   )}
                 />
                 {item.title}
@@ -108,12 +108,12 @@ export function Sidebar() {
 
         {/* User Section */}
         <div className="p-4 border-t border-gray-200">
-          <div className="flex items-center gap-3 p-2 rounded-lg bg-white border border-gray-200">
-            <div className="h-8 w-8 rounded-full bg-white border border-gray-300 flex items-center justify-center">
-              <span className="text-xs font-semibold text-black">U</span>
+          <div className="flex items-center gap-3 p-2 rounded-lg bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+              <span className="text-xs font-semibold text-white">U</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-black truncate">
+              <p className="text-sm font-medium text-gray-900 truncate">
                 User
               </p>
               <p className="text-xs text-gray-500 truncate">
@@ -125,7 +125,7 @@ export function Sidebar() {
       </aside>
 
       {/* Mobile Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 pb-safe">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-200 z-50 pb-safe">
         <div className="flex items-center justify-around py-2">
           {NAV_ITEMS.slice(0, 5).map((item) => {
             const Icon = item.icon;
@@ -138,7 +138,7 @@ export function Sidebar() {
                 className={cn(
                   "flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all",
                   isActive
-                    ? "text-black"
+                    ? "text-purple-600"
                     : "text-gray-500"
                 )}
               >

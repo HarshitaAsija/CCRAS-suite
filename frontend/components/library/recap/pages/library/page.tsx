@@ -2,23 +2,20 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-// ✅ Local imports - SELF-CONTAINED
-import { collectionApi, paperApi, LibraryCollection, LibraryPaper } from "./lib/api";
-import { getUserId } from "./lib/auth";
 import { toast } from "sonner";
 
-// ✅ Local UI imports
-import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
-import { Textarea } from "./components/ui/textarea";
+// ✅ UI imports
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "./components/ui/dialog";
-import { cn } from "./lib/utils";
+} from "../../components/ui/dialog";
+import { cn } from "../../lib/utils";
 
 // Icons
 import {
@@ -32,7 +29,6 @@ import {
   User,
   Calendar,
   BookOpen,
-  Quote,
   StickyNote,
   SlidersHorizontal,
   ChevronDown,
@@ -44,11 +40,14 @@ import {
   MoreVertical,
 } from "lucide-react";
 
-// ✅ Local components (exist at ./components/library/)
-import AddToCollectionDialog from "./components/library/AddToCollectionDialog";
-import AnnotationDrawer from "./components/library/AnnotationDrawer";
-import ExportModal from "./components/library/ExportModal";
+// API imports
+import { collectionApi, paperApi, LibraryCollection, LibraryPaper } from "../../lib/api";
+import { getUserId } from "../../lib/auth";
 
+// Local components
+import AddToCollectionDialog from "../../components/library/AddToCollectionDialog";
+import AnnotationDrawer from "../../components/library/AnnotationDrawer";
+import ExportModal from "../../components/library/ExportModal";
 import { Toaster } from "sonner";
 
 // ─────────────────────────────────────────────────────────
@@ -335,9 +334,9 @@ function LibraryPageBackdrop() {
 }
 
 // ─────────────────────────────────────────────────────────
-// Main Component - ✅ SELF-CONTAINED
+// Main Component
 // ─────────────────────────────────────────────────────────
-export function RecapLibrary() {
+export default function LibraryPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [collections, setCollections] = useState<LibraryCollection[]>([]);
@@ -534,7 +533,7 @@ export function RecapLibrary() {
 
   return (
     <>
-      <div className="relative bg-gradient-to-b from-white via-violet-50/60 to-violet-100/50 text-[#211d2e] overflow-hidden">
+      <div className="relative min-h-screen bg-gradient-to-b from-white via-violet-50/60 to-violet-100/50 text-[#211d2e] overflow-hidden">
         <LibraryPageBackdrop />
 
         <div className="relative min-w-0">
