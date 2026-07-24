@@ -22,7 +22,7 @@ export default function BrahmaApp() {
       case "discover":
         return <RishiStudio setActivePage={setActivePage} />;
       case "library":
-        return <RecapLibrary setActivePage={setActivePage} />;
+        return <RecapLibrary />;
       case "design":
         return <StudyDesignStudio />;
       case "collections":

@@ -15,6 +15,7 @@ import {
   Upload,
   GitBranch,
   BookOpen,
+  BarChart2,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -49,15 +50,17 @@ const NAV_ITEMS = [
     icon: GitBranch,
   },
   {
-    title: "Browse All",
-    href: "/search",
-    icon: BookOpen,
+    title: "Analytics",
+    href: "/analytics",
+    icon: BarChart2,
   },
 ];
 
+type Tab = "home" | "search" | "library" | "rag" | "snowballing" | "analytics" | "upload";
+
 interface SidebarProps {
-  activeTab: string;
-  onTabChange: (tab: string) => void;
+  activeTab: Tab;
+  onTabChange: (tab: Tab) => void;
 }
 
 export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
@@ -89,7 +92,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
             return (
               <button
                 key={item.title}
-                onClick={() => onTabChange(tabKey)}
+                onClick={() => onTabChange(tabKey as Tab)}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
                   isActive
@@ -165,7 +168,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
             return (
               <button
                 key={item.title}
-                onClick={() => onTabChange(tabKey)}
+                onClick={() => onTabChange(tabKey as Tab)}
                 className={cn(
                   "flex w-full items-center gap-3 px-3 py-2 text-left text-sm font-medium",
                   isActive

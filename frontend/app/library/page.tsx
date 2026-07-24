@@ -1,6 +1,6 @@
 "use client";
 
-import LibraryPage from '../../components/library/recap/pages/library/page';
+import LibraryPage from '../../components/library/recap/LibraryPage';
 
 export default function LibraryRoute() {
   return (

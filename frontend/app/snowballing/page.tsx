@@ -1,6 +1,6 @@
 "use client";
 
-import SnowballingPage from '../../components/library/recap/pages/snowballing/page';
+import SnowballingPage from '../../components/library/recap/SnowballingPage';
 
 export default function SnowballingRoute() {
   return (
