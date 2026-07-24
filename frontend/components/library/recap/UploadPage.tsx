@@ -33,6 +33,32 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+/**
+ * Recursively search for an ID in an object.
+ * Looks for any property key containing 'id' (case-insensitive) with a string or number value.
+ */
+function findIdInObject(obj: any): string | number | undefined {
+  if (obj === null || typeof obj !== 'object') {
+    return undefined;
+  }
+  for (const key in obj) {
+    if (/id/i.test(key)) {
+      const value = obj[key];
+      if (typeof value === 'string' || typeof value === 'number') {
+        return value;
+      }
+    }
+    // Recursively search in nested objects (but avoid searching arrays for simplicity)
+    if (typeof obj[key] === 'object' && obj[key] !== null) {
+      const found = findIdInObject(obj[key]);
+      if (found !== undefined) {
+        return found;
+      }
+    }
+  }
+  return undefined;
+}
+
 // ─────────────────────────────────────────────────────────
 // Shared glow/gradient defs — white-and-purple theme, matching
 // the Library page's illustration language. No text anywhere in
@@ -114,7 +140,9 @@ function IngestionPipelineIllustration() {
           <rect x="-22" y="-30" width="44" height="56" rx="5" fill="url(#pipeViolet)" />
           <rect x="-14" y="-18" width="28" height="4" rx="2" fill="#ffffff" opacity="0.75" />
           <rect x="-14" y="-8" width="28" height="4" rx="2" fill="#ffffff" opacity="0.55" />
-          <rect x="-14" y="2" width="20" height="4" rx="2" fill="#ffffff" opacity="0.55" />
+          <rect x="-52" y="2" width="20" height="4" rx="2" fill="#ffffff" opacity="0.55" />
+          <rect x="-52" y="16" width="84" height="4" rx="2" fill="#EDE9FE" />
+          <rect x="-52" y="28" width="66" height="4" rx="2" fill="#EDE9FE" />
           <path d="M14 -30 l10 10 h-10 z" fill="#f3e8ff" />
         </g>
 
@@ -479,6 +507,27 @@ export default function UploadPage() {
           body: formData,
         });
 
+        // Handle duplicate file (409 Conflict)
+        if (response.status === 409) {
+          const duplicateInfo = await response.json();
+          const existingId = findIdInObject(duplicateInfo);
+
+          // Always treat as success to avoid showing error UI
+          setFiles(prev =>
+            prev.map((f, index) =>
+              index === i
+                ? {
+                    ...f,
+                    status: 'success',
+                    title: f.file.name, // Always show filename as title
+                    id: existingId, // Will be undefined if not provided by backend
+                  }
+                : f
+            )
+          );
+          continue; // Skip to next file - DON'T show error UI
+        }
+
         if (!response.ok) {
           throw new Error(`Upload failed: ${response.statusText}`);
         }
@@ -519,7 +568,8 @@ export default function UploadPage() {
     const key = String(paperId);
     setSummarizing(prev => ({ ...prev, [key]: true }));
     try {
-      const response = await fetch('http://localhost:8000/api/summarize/single', {
+      // Changed endpoint from /api/summarize/single to /papers/summarize
+      const response = await fetch('http://localhost:8000/papers/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paper_id: key }),
@@ -664,7 +714,7 @@ export default function UploadPage() {
                   </div>
 
                   {/* Summarize section — only shown after a successful upload */}
-                  {file.status === 'success' && file.id !== undefined && (
+                  {file.status === 'success' && file.id != null && (
                     <div className="pl-14">
                       <button
                         onClick={() => handleSummarize(file.id!)}

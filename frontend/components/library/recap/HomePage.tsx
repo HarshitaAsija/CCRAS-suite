@@ -182,8 +182,10 @@ function ResearchInsightIllustration() {
         </filter>
       </defs>
 
+      {/* ambient glow behind the whole scene */}
       <circle cx="180" cy="165" r="150" fill="url(#riGlow)" opacity="0.3" />
 
+      {/* left: research paper card */}
       <g filter="url(#riSoftGlow)">
         <rect x="34" y="70" width="120" height="150" rx="12" fill="url(#riCardGrad)" stroke="#C4B5FD" strokeWidth="2" />
       </g>
@@ -195,23 +197,28 @@ function ResearchInsightIllustration() {
       <rect x="52" y="168" width="84" height="4" rx="2" fill="#EDE9FE" />
       <rect x="52" y="180" width="66" height="4" rx="2" fill="#EDE9FE" />
 
+      {/* flow arrow — paper becomes insight */}
       <g filter="url(#riSoftGlow)">
         <line x1="164" y1="145" x2="216" y2="145" stroke="url(#riFlowGrad)" strokeWidth="3" strokeLinecap="round" />
         <path d="M206 135 L220 145 L206 155" fill="none" stroke="url(#riFlowGrad)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
       </g>
 
+      {/* right: compact insight / analysis card */}
       <g filter="url(#riSoftGlow)">
         <rect x="228" y="60" width="108" height="130" rx="12" fill="url(#riCardGrad)" stroke="#C4B5FD" strokeWidth="2" />
       </g>
       <rect x="244" y="76" width="52" height="6" rx="3" fill="#7C3AED" opacity="0.85" />
+      {/* mini bar chart */}
       <rect x="244" y="140" width="10" height="30" rx="2.5" fill="#C4B5FD" />
       <rect x="260" y="126" width="10" height="44" rx="2.5" fill="#7C3AED" />
       <rect x="276" y="134" width="10" height="36" rx="2.5" fill="#A78BFA" />
       <rect x="292" y="112" width="10" height="58" rx="2.5" fill="#4F46E5" />
       <rect x="308" y="122" width="10" height="48" rx="2.5" fill="#818CF8" />
+      {/* confirmed-insight badge */}
       <circle cx="316" cy="90" r="12" fill="#059669" />
       <path d="M311 90 L315 94 L322 85" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
 
+      {/* twinkling sparkle marks — the "glitter" accents, kept sparse */}
       <g filter="url(#riSoftGlow)">
         <path d="M292 40 L295 48 L303 51 L295 54 L292 62 L289 54 L281 51 L289 48 Z" fill="#FBBF24" opacity="0.9" />
         <path d="M60 50 L62 55 L67 57 L62 59 L60 64 L58 59 L53 57 L58 55 Z" fill="#C4B5FD" opacity="0.85" />
@@ -369,6 +376,7 @@ export default function HomePage({ setActiveTab }: { setActiveTab: (tab: string)
               understanding, and synthesizing scientific knowledge.
             </p>
 
+            {/* Search bar */}
             <div className="flex gap-2 bg-white border border-violet-100 rounded-xl p-1.5 shadow-lg shadow-violet-300/30 ring-1 ring-violet-100 focus-within:shadow-[0_0_28px_rgba(124,58,237,0.35)] transition-shadow">
               <Search className="w-4 h-4 text-slate-400 self-center ml-2 flex-shrink-0" />
               <Input
@@ -396,6 +404,7 @@ export default function HomePage({ setActiveTab }: { setActiveTab: (tab: string)
               </Button>
             </div>
 
+            {/* Suggestion chips */}
             <div className="flex flex-wrap justify-center lg:justify-start gap-2 mt-4">
               <span className="text-xs text-slate-400 self-center">Try:</span>
               {SUGGESTIONS.map(({ label, chip }) => (
@@ -410,6 +419,7 @@ export default function HomePage({ setActiveTab }: { setActiveTab: (tab: string)
             </div>
           </div>
 
+          {/* Right: the one signature illustration for the whole page */}
           <div className="hidden lg:block relative w-full h-72">
             <ResearchInsightIllustration />
           </div>
@@ -455,6 +465,91 @@ export default function HomePage({ setActiveTab }: { setActiveTab: (tab: string)
               </button>
             );
           })}
+        </div>
+
+        {/* Trending Topics */}
+        <div className="mt-6 bg-white rounded-xl border border-violet-100 px-6 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-500 tracking-wide flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-violet-500" />
+              Trending Topics
+            </h2>
+            <Link href="/search" className="text-xs text-violet-600 hover:text-violet-700 flex items-center gap-1">
+              View All <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          {trendingLoading ? (
+            <ul className="space-y-3 animate-pulse">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <li key={i} className="h-12 bg-violet-50 rounded-lg" />
+              ))}
+            </ul>
+          ) : trendingError ? (
+            <div className="flex flex-col items-center justify-center text-center py-10">
+              <p className="text-sm text-slate-500 mb-3">{trendingError}</p>
+              <button
+                onClick={() => fetchTrending(true)}
+                className="flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-700"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Try again
+              </button>
+            </div>
+          ) : trendingTopics.length === 0 ? (
+            <div className="flex flex-col items-center text-center py-10">
+              <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center mb-3">
+                <Sparkles className="w-5 h-5 text-violet-500" />
+              </div>
+              <p className="text-sm text-slate-500">
+                No trending topics yet — they&apos;ll appear here once papers are indexed.
+              </p>
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {trendingTopics.map((topic, index) => {
+                const style = TOPIC_STYLES[index % TOPIC_STYLES.length];
+                const change =
+                  topic.trend && topic.trend.length >= 2
+                    ? Math.round(
+                        ((topic.trend[topic.trend.length - 1] - topic.trend[0]) /
+                          (topic.trend[0] || 1)) *
+                          100
+                      )
+                    : null;
+
+                return (
+                  <li
+                    key={topic.id}
+                    className="flex items-center justify-between group cursor-pointer hover:bg-violet-50/60 -mx-2 px-2 py-2 rounded-lg transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0"
+                        style={{ backgroundColor: `${style.color}1a` }}
+                      >
+                        {style.icon}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">{topic.name}</p>
+                        <p className="text-xs text-slate-400">{topic.paperCount} papers</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {topic.trend && <Sparkline data={topic.trend} color={style.color} />}
+                      {change !== null && (
+                        <span
+                          className="text-xs font-semibold"
+                          style={{ color: change >= 0 ? "#059669" : "#DC2626" }}
+                        >
+                          {change >= 0 ? "↑" : "↓"} {Math.abs(change)}%
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
         {/* Platform Stats */}
