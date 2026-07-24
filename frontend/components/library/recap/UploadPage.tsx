@@ -196,8 +196,8 @@ function GrobidExtractionMotif({ className }: { className?: string }) {
         {/* corner brackets emphasizing "structured extraction" */}
         <path d="M38 28 h14 M38 28 v14" stroke="url(#grobidIndigo)" strokeWidth="3.4" strokeLinecap="round" fill="none" />
         <path d="M222 28 h-14 M222 28 v14" stroke="url(#grobidIndigo)" strokeWidth="3.4" strokeLinecap="round" fill="none" />
-        <path d="M38 272 h14 M38 272 v-14" stroke="url(#grobidIndigo)" strokeWeight="3.4" strokeLinecap="round" fill="none" />
-        <path d="M222 272 h-14 M222 272 v-14" stroke="url(#grobidIndigo)" strokeWeight="3.4" strokeLinecap="round" fill="none" />
+        <path d="M38 272 h14 M38 272 v-14" stroke="url(#grobidIndigo)" strokeWidth="3.4" strokeLinecap="round" fill="none" />
+        <path d="M222 272 h-14 M222 272 v-14" stroke="url(#grobidIndigo)" strokeWidth="3.4" strokeLinecap="round" fill="none" />
       </g>
     </svg>
   );

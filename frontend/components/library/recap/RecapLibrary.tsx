@@ -10,8 +10,6 @@ import SnowballingPage from "./SnowballingPage";
 import AnalyticsPage from "./AnalyticsPage";
 import UploadPage from "./UploadPage";
 
-// frontend/components/library/recap/RecapLibrary.tsx
-
 // ─── Main Component ──────────────────────────────────────────────────────────────
 export function RecapLibrary() {
   const [activeTab, setActiveTab] = useState<
@@ -19,17 +17,23 @@ export function RecapLibrary() {
   >("home");
 
   return (
-    <>
+    <div className="relative h-screen overflow-hidden">
       <Sidebar activeTab={activeTab} onTabChange={(tab) => setActiveTab(tab as typeof activeTab)} />
-      <div className="md:ml-64 min-h-screen bg-gradient-to-b from-[#F8F6FD] to-white">
-        {activeTab === "home" && <HomePage setActiveTab={(tab: string) => setActiveTab(tab as typeof activeTab)} />}
+      <div className="md:ml-64 h-full w-full overflow-y-auto bg-gradient-to-b from-[#F8F6FD] to-white">
+        {activeTab === "home" && (
+          <HomePage
+            setActiveTab={(tab: string) => setActiveTab(tab as typeof activeTab)}
+          />
+        )}
         {activeTab === "search" && <SearchPage />}
-        {activeTab === "library" && <LibraryPage onNavigate={(tab: string) => setActiveTab(tab)} />}
+        {activeTab === "library" && (
+          <LibraryPage onNavigate={(tab: string) => setActiveTab(tab as typeof activeTab)} />
+        )}
         {activeTab === "rag" && <RagPage />}
         {activeTab === "snowballing" && <SnowballingPage />}
         {activeTab === "analytics" && <AnalyticsPage />}
         {activeTab === "upload" && <UploadPage />}
       </div>
-    </>
+    </div>
   );
 }
