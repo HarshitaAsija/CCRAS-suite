@@ -6,16 +6,16 @@
 
 import React, { useState, useRef, useEffect } from "react";
 // ✅ UI components - corrected paths
-import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
-import { ScrollArea } from "../../components/ui/scroll-area";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { ScrollArea } from "./components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "../../components/ui/dialog";
+} from "./components/ui/dialog";
 import {
   Send,
   Loader2,
@@ -34,7 +34,7 @@ import {
   ChevronRight,
   User,
 } from "lucide-react";
-import { cn } from "../../../../../lib/utils";
+import { cn } from "./lib/utils";
 // ========================================
 // Types
 // ========================================

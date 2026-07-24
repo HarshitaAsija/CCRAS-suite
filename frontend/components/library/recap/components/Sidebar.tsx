@@ -5,8 +5,6 @@
 
 "use client";
 
-import { usePathname } from "next/navigation";
-import Link from "next/link";
 import { cn } from "../lib/utils";
 import {
   Sparkles,
@@ -57,9 +55,12 @@ const NAV_ITEMS = [
   },
 ];
 
-export function Sidebar() {
-  const pathname = usePathname();
+interface SidebarProps {
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+}
 
+export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   return (
     <>
       {/* Desktop Sidebar */}
@@ -81,12 +82,14 @@ export function Sidebar() {
         <nav className="flex-1 px-3 py-4 space-y-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            // Determine tab key from href
+            const tabKey = item.href === "/" ? "home" : item.href.slice(1);
+            const isActive = activeTab === tabKey;
 
             return (
-              <Link
+              <button
                 key={item.title}
-                href={item.href}
+                onClick={() => onTabChange(tabKey)}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
                   isActive
@@ -97,54 +100,87 @@ export function Sidebar() {
                 <Icon
                   className={cn(
                     "h-5 w-5",
-                    isActive ? "text-purple-600" : "text-gray-400"
+                    isActive ? "text-purple-900" : "text-gray-500 hover:text-gray-900"
                   )}
                 />
-                {item.title}
-              </Link>
+                <span className="flex-1">{item.title}</span>
+              </button>
             );
           })}
         </nav>
-
-        {/* User Section */}
-        <div className="p-4 border-t border-gray-200">
-          <div className="flex items-center gap-3 p-2 rounded-lg bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-              <span className="text-xs font-semibold text-white">U</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                User
-              </p>
-              <p className="text-xs text-gray-500 truncate">
-                researcher@lab.org
-              </p>
-            </div>
-          </div>
-        </div>
       </aside>
 
-      {/* Mobile Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-200 z-50 pb-safe">
-        <div className="flex items-center justify-around py-2">
-          {NAV_ITEMS.slice(0, 5).map((item) => {
+      {/* Mobile Navigation */}
+      <nav className="md:hidden bx-shadow bg-white border-t border-gray-200">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+              <Sparkles className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="font-bold text-lg bg-gradient-to-r from-purple-700 to-indigo-700 bg-clip-text text-transparent">
+                RECAP
+              </h1>
+              <p className="text-xs text-gray-500 -mt-1">KRITA Platform</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onTabChange("home")}
+              className={cn(
+                "p-2 rounded-md hover:bg-gray-100",
+                activeTab === "home" && "bg-blue-500 text-white"
+              )}
+            >
+              <Home className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => onTabChange("search")}
+              className={cn(
+                "p-2 rounded-md hover:bg-gray-100",
+                activeTab === "search" && "bg-blue-500 text-white"
+              )}
+            >
+              <Search className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => onTabChange("rag")}
+              className={cn(
+                "p-2 rounded-md hover:bg-gray-100",
+                activeTab === "rag" && "bg-blue-500 text-white"
+              )}
+            >
+              <MessageSquare className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1 px-3 py-2">
+          {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            // Determine tab key from href
+            const tabKey = item.href === "/" ? "home" : item.href.slice(1);
+            const isActive = activeTab === tabKey;
 
             return (
-              <Link
+              <button
                 key={item.title}
-                href={item.href}
+                onClick={() => onTabChange(tabKey)}
                 className={cn(
-                  "flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all",
+                  "flex w-full items-center gap-3 px-3 py-2 text-left text-sm font-medium",
                   isActive
-                    ? "text-purple-600"
-                    : "text-gray-500"
+                    ? "bg-blue-500 text-white"
+                    : "hover:bg-gray-100 hover:text-gray-900"
                 )}
               >
-                <Icon className="h-5 w-5" />
-                <span className="text-[10px]">{item.title}</span>
-              </Link>
+                <Icon
+                  className={cn(
+                    "h-5 w-5",
+                    isActive ? "text-white" : "text-gray-600 hover:text-gray-900"
+                  )}
+                />
+                <span className="flex-1">{item.title}</span>
+              </button>
             );
           })}
         </div>
