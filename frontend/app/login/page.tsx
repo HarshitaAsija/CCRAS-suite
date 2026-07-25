@@ -3,6 +3,7 @@ import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { saveToken } from "../../components/library/recap/lib/auth";
 
 function GraphIllustration() {
   return (
@@ -13,12 +14,15 @@ function GraphIllustration() {
         [340,195,298,298],[195,275,298,298],[95,278,195,275],
         [310,75,238,35],[390,148,430,95],[55,180,18,238],
         [238,35,160,25],[430,95,470,60],[18,238,10,300],
+        [160,25,5]
       ].map(([x1,y1,x2,y2],i) => (
         <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.2)" strokeWidth="1.2"/>
       ))}
       <circle cx="298" cy="220" r="50" stroke="#FF6B4A" strokeWidth="1.5" strokeDasharray="5 4" fill="rgba(255,107,74,0.1)"/>
       <text x="298" y="285" textAnchor="middle" fontSize="10" fontWeight="600" fill="#FF6B4A" letterSpacing="0.12em">UNSTUDIED</text>
-      {[[80,60,9],[310,75,8],[55,180,8],[390,148,7],[95,278,8],[195,275,7],[298,298,7],[238,35,6],[430,95,5],[18,238,5],[160,25,5]].map(([cx,cy,r],i) => (
+      {[
+        [80,60,9],[310,75,8],[55,180,8],[390,148,7],[95,278,8],[195,275,7],[298,298,7],[238,35,6],[430,95,5],[18,238,5],[160,25,5]
+      ].map(([cx,cy,r],i) => (
         <circle key={i} cx={cx} cy={cy} r={r} fill="rgba(255,255,255,0.8)" opacity={i < 7 ? 0.9 : 0.5}/>
       ))}
       <circle cx="298" cy="220" r="10" fill="#FF6B4A" opacity="0.95"/>
@@ -39,7 +43,10 @@ function LoginForm() {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      await login({ email, password });
+      const user = await login({ email, password });
+      // Use the dev token that the recap module's authHeaders falls back to
+      // This ensures the RAG module recognizes the user as logged in
+      saveToken("dev-token");
       window.location.href = '/dashboard';
     } catch (err: any) {
       setError(err.message || 'Login failed');
@@ -52,7 +59,7 @@ function LoginForm() {
       <div className="hidden lg:flex w-1/2 flex-col p-12 bg-primary relative overflow-hidden">
         <div className="flex items-center gap-2.5 mb-auto">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/15 text-white text-sm font-bold border border-white/20">R</div>
-          <span className="text-white font-semibold text-sm tracking-wide">RISHI-AI</span>
+          <span className="text-white font-semibold text-sm tracking-wide">Research Intelligent suite</span>
         </div>
         <div className="mb-8">
           <p className="text-white/50 text-xs font-semibold uppercase tracking-[0.16em] mb-4">DISCOVER MODULE</p>
