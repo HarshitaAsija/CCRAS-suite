@@ -35,6 +35,9 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "./lib/utils";
+// Import auth helper
+import { getToken } from "./lib/auth";
+
 // ========================================
 // Types
 // ========================================
@@ -114,7 +117,7 @@ const RagFlowIllustration = () => (
     <g opacity="0.8">
       <path d="M60 20 l1 3 l3 1 l-3 1 l-1 3 l-1 -3 l-3 -1 l3 -1 z" fill="#e9a6f0" opacity="0.7" />
       <path d="M565 30 l1.2 3.2 l3.2 1.2 l-3.2 1.2 l-1.2 3.2 l-1.2 -3.2 l-3.2 -1.2 l3.2 -1.2 z" fill="#7dd3fc" opacity="0.7" />
-      <path d="M20 100 l1 2.8 l2.8 1 l-2.8 1 l-1 2.8 l-1 -2.8 l-2.8 -1 l2.8 -1 z" fill="#86efac" opacity="0.6" />
+      <path d="M20 100 l1 2.8 l2.8 1 l-2.8 1 l-1 2.8 l-1 -2.8 l-2.8 -1 z" fill="#86efac" opacity="0.6" />
       <circle cx="45" cy="8" r="1.8" fill="#fbbf24" opacity="0.7" />
       <circle cx="600" cy="120" r="2" fill="#f472b6" opacity="0.6" />
       <circle cx="500" cy="150" r="1.8" fill="#a855f7" opacity="0.5" />
@@ -134,8 +137,6 @@ const RagFlowIllustration = () => (
       <rect x="8" y="33" width="19" height="2.2" rx="1.1" fill="#e4defa" />
       <circle cx="10" cy="47" r="3" fill="none" stroke="#f472b6" strokeWidth="1.2" />
       <path d="M8.5 47 l1.2 1.4 l2.3 -2.6" stroke="#f472b6" strokeWidth="1.1" fill="none" />
-      <circle cx="58" cy="66" r="8" fill="#ffffff" stroke="#fbbf24" strokeWidth="1.3" />
-      <circle cx="56" cy="64" r="3" fill="none" stroke="#fbbf24" strokeWidth="1.2" />
       <path d="M58 66 l3 3" stroke="#fbbf24" strokeWidth="1.4" strokeLinecap="round" />
     </g>
 
@@ -168,7 +169,7 @@ const RagFlowIllustration = () => (
       <circle cx="30" cy="50" r="2" fill="#7c3aed" />
       <circle cx="46" cy="50" r="2" fill="#7c3aed" />
       <circle cx="62" cy="50" r="2" fill="#7c3aed" />
-      <path d="M78 16 l3.4 9.4 l9.4 3.4 l-9.4 3.4 l-3.4 9.4 l-3.4 -9.4 l-9.4 -3.4 l9.4 -3.4 z" fill="#f0abfc" />
+      <path d="M78 16 l3.4 9.4 l9.4 3.4 l-9.4 3.4 l-3.4 9.4 l-3.4 -9.4 l9.4 -3.4 z" fill="#f0abfc" />
       <path d="M10 20 l2 5.4 l5.4 2 l-5.4 2 l-2 5.4 l-2 -5.4 l-5.4 -2 l5.4 -2 z" fill="#f0abfc" opacity="0.8" />
     </g>
 
@@ -181,9 +182,9 @@ const RagFlowIllustration = () => (
     <g transform="translate(436,22)">
       <rect width="128" height="80" rx="12" fill="#ffffff" stroke="#ece7f5" strokeWidth="1.3" />
       <rect x="13" y="14" width="98" height="6" rx="3" fill="#2c2540" />
-      <rect x="13" y="26" width="84" height="5" rx="2.5" fill="#e4defa" />
-      <rect x="13" y="36" width="70" height="5" rx="2.5" fill="#e4defa" />
-      <rect x="13" y="46" width="60" height="5" rx="2.5" fill="#f1edf9" />
+      <rect x="13" y="26" width="84" height="6" rx="3" fill="#e4defa" />
+      <rect x="13" y="36" width="70" height="10" rx="3" fill="#e4defa" />
+      <rect x="13" y="46" width="60" height="10" rx="3" fill="#f1edf9" />
       <rect x="13" y="60" width="28" height="12" rx="4" fill="#fdf2fb" stroke="#f472b6" strokeWidth="1" />
       <rect x="45" y="60" width="28" height="12" rx="4" fill="#eff8ff" stroke="#38bdf8" strokeWidth="1" />
       <circle cx="108" cy="66" r="10" fill="#eafbf3" stroke="#4ade80" strokeWidth="1.2" />
@@ -210,11 +211,11 @@ const AmbientLibraryBackdrop = () => (
 // ========================================
 // Chat Bubble Component
 // ========================================
-const ChatBubble = ({ 
-  message, 
-  onCitationClick 
-}: { 
-  message: ChatMessage; 
+const ChatBubble = ({
+  message,
+  onCitationClick
+}: {
+  message: ChatMessage;
   onCitationClick?: (citation: Citation) => void;
 }) => {
   const getConfidenceColor = (level: string) => {
@@ -237,8 +238,8 @@ const ChatBubble = ({
   return (
     <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
       <div className={`max-w-[85%] md:max-w-[75%] ${
-        message.role === "user" 
-          ? "bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white rounded-2xl rounded-br-sm shadow-sm" 
+        message.role === "user"
+          ? "bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white rounded-2xl rounded-br-sm shadow-sm"
           : "bg-white border border-[#ece7f5] text-[#2c2540] rounded-2xl rounded-tl-sm shadow-sm"
       } p-4`}>
         {/* Message Header */}
@@ -292,8 +293,8 @@ const ChatBubble = ({
                     {idx + 1}
                   </span>
                   <span className="text-xs text-[#8b849c] group-hover:text-[#2c2540] transition truncate">
-                    {cite.title && cite.title !== "Untitled Paper" 
-                      ? cite.title 
+                    {cite.title && cite.title !== "Untitled Paper"
+                      ? cite.title
                       : `Paper ${idx + 1}`}
                   </span>
                   <ChevronRight className="h-3 w-3 text-[#b3acc4] opacity-0 group-hover:opacity-100 transition ml-auto" />
@@ -345,12 +346,12 @@ export default function RagPage() {
   const [isLoadingPaper, setIsLoadingPaper] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
-  
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/api$/, '');
-  
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -364,19 +365,13 @@ export default function RagPage() {
   const loginAndLoadSessions = async () => {
     setIsInitializing(true);
     try {
-      const loginRes = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "username=newuser@example.com&password=test123"
-      });
-      
-      if (loginRes.ok) {
-        const data = await loginRes.json();
-        setToken(data.access_token);
-        await loadSessions(data.access_token);
+      const existingToken = getToken();
+      if (existingToken) {
+        setToken(existingToken);
+        await loadSessions(existingToken);
       }
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("Failed to load sessions:", error);
     } finally {
       setIsInitializing(false);
     }
@@ -427,7 +422,7 @@ export default function RagPage() {
 
   const createNewSession = async () => {
     if (!token) return;
-    
+
     try {
       const title = newSessionTitle.trim() || "New Chat";
       const res = await fetch(`${API_URL}/api/rag/chat`, {
@@ -441,18 +436,18 @@ export default function RagPage() {
           session_id: null
         })
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         const sessionId = data.session_id;
-        
+
         const newSession: Session = {
           id: sessionId,
           title: title,
           date: new Date().toISOString().split("T")[0],
           messageCount: 1
         };
-        
+
         setSessions((prev) => [newSession, ...prev]);
         setActiveSession(sessionId);
         setMessages([{
@@ -465,6 +460,7 @@ export default function RagPage() {
         setIsNewSessionDialogOpen(false);
         setNewSessionTitle("");
       } else {
+        // Create local session as fallback
         createLocalSession(title);
       }
     } catch (error) {
@@ -495,7 +491,7 @@ export default function RagPage() {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
       });
-      
+
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       if (activeSession === sessionId) {
         setActiveSession(null);
@@ -508,15 +504,15 @@ export default function RagPage() {
 
   const fetchPaperDetails = async (citation: Citation) => {
     if (!token) return;
-    
+
     setIsLoadingPaper(true);
     setSelectedCitation(citation);
-    
+
     try {
       const response = await fetch(`${API_URL}/api/papers/${citation.id}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setPaperDetails({
@@ -568,7 +564,7 @@ export default function RagPage() {
       content: input.trim(),
       timestamp: new Date()
     };
-    
+
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsGenerating(true);
@@ -644,12 +640,12 @@ export default function RagPage() {
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantId
-                      ? { 
-                          ...msg, 
-                          confidence: { 
-                            score: confidence.score, 
-                            level: confidence.level 
-                          } 
+                      ? {
+                          ...msg,
+                          confidence: {
+                            score: confidence.score,
+                            level: confidence.level
+                          }
                         }
                       : msg
                   )
@@ -681,8 +677,8 @@ export default function RagPage() {
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantId
-            ? { 
-                ...msg, 
+            ? {
+                ...msg,
                 content: "Sorry, something went wrong. Please try again.",
                 isStreaming: false
               }
@@ -728,6 +724,15 @@ export default function RagPage() {
     );
   }
 
+  // If not logged in, show login message
+  if (!token) {
+    return (
+      <div className="flex items-center justify-center h-full bg-white">
+        <p className="text-[#8b849c]">Please log in to use the RAG Assistant</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full bg-white text-[#2c2540] overflow-hidden">
       {/* Mobile sidebar toggle */}
@@ -740,7 +745,7 @@ export default function RagPage() {
 
       {/* Sidebar */}
       <aside className={`
-        fixed md:relative z-40 w-72 bg-[#fbfaff] border-r border-[#ece7f5] 
+        fixed md:relative z-40 w-72 bg-[#fbfaff] border-r border-[#ece7f5]
         h-full transition-transform duration-300 ease-in-out flex flex-col
         ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
       `}>
@@ -758,11 +763,13 @@ export default function RagPage() {
 
         <div className="p-3 flex-shrink-0">
           <Dialog open={isNewSessionDialogOpen} onOpenChange={setIsNewSessionDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="w-full bg-gradient-to-br from-violet-600 to-fuchsia-600 hover:opacity-90 text-white shadow-sm">
-                <Plus className="h-4 w-4 mr-2" /> New Chat
-              </Button>
-            </DialogTrigger>
+            <DialogTrigger
+              render={
+                <Button className="w-full bg-gradient-to-br from-violet-600 to-fuchsia-600 hover:opacity-90 text-white shadow-sm">
+                  <Plus className="h-4 w-4 mr-2" /> New Chat
+                </Button>
+              }
+            />
             <DialogContent className="bg-white border-[#ece7f5] text-[#2c2540]">
               <DialogHeader>
                 <DialogTitle>New Chat Session</DialogTitle>
@@ -861,7 +868,7 @@ export default function RagPage() {
             </div>
             <div className="min-w-0">
               <h1 className="font-semibold text-sm truncate text-[#211d2e]">
-                {activeSession 
+                {activeSession
                   ? sessions.find(s => s.id === activeSession)?.title || "Research Assistant"
                   : "Research Assistant"
                 }
@@ -985,7 +992,7 @@ export default function RagPage() {
           >
             <X className="h-5 w-5" />
           </button>
-          
+
           {isLoadingPaper ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="h-8 w-8 animate-spin text-fuchsia-500" />
@@ -995,15 +1002,15 @@ export default function RagPage() {
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-fuchsia-50 border border-fuchsia-200 text-fuchsia-600 text-xs font-semibold">
                 <BookOpen className="h-3.5 w-3.5" /> Citation
               </div>
-              
+
               <h3 className="text-lg font-bold text-[#211d2e]">
                 {paperDetails?.title || selectedCitation?.title || "Untitled"}
               </h3>
-              
+
               <p className="text-sm text-[#8b849c]">
                 {paperDetails?.authors?.join(", ") || selectedCitation?.authors?.join(", ") || "Unknown authors"}
               </p>
-              
+
               <div className="flex flex-wrap gap-2">
                 <span className="text-xs bg-[#faf8fd] border border-[#ece7f5] px-3 py-1 rounded-full text-[#8b849c]">
                   {paperDetails?.journal || selectedCitation?.journal || "Unknown Journal"}
@@ -1017,7 +1024,7 @@ export default function RagPage() {
                   </span>
                 )}
               </div>
-              
+
               <div className="pt-4 border-t border-[#ece7f5]">
                 <div className="text-xs text-[#9691a8] uppercase font-semibold mb-2">
                   Abstract
@@ -1026,9 +1033,9 @@ export default function RagPage() {
                   {paperDetails?.abstract || "No abstract available"}
                 </div>
               </div>
-              
+
               <div className="pt-4 border-t border-[#ece7f5]">
-                <Button 
+                <Button
                   className="w-full bg-gradient-to-br from-violet-600 to-fuchsia-600 hover:opacity-90 text-white"
                   onClick={() => {
                     if (paperDetails?.doi && paperDetails.doi !== "N/A") {

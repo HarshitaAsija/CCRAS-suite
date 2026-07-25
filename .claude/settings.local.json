@@ -5,7 +5,8 @@
       "Bash(python3 *)",
       "Bash(npx tsc *)",
       "Bash(npx *)",
-      "Bash(./node_modules/.bin/tsc --noEmit)"
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(/mnt/c/Users/Khush/Projects/CCRAS-suite/recap/venv/Scripts/python *)"
     ]
   }
 }

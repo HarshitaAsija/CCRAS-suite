@@ -61,9 +61,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 
     # Keep DEV_MODE for your teammate's RAG chat
     if os.getenv("DEV_MODE") == "true" and token == "dev-token":
-        user = get_user(db, email="dev@example.com")
-        if user is None:
-            user = db.query(User).first()
+        user = db.query(User).first()
         if user is None:
             raise credentials_exception
         return user
