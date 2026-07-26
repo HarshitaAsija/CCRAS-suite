@@ -45,9 +45,9 @@ export function SearchSuggestions({ query, visible, onSelectPaperTitle, onSelect
   }
 
   return (
-    <div className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-xl border border-[#2A2740] bg-[#15131F] shadow-2xl">
+    <div className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-xl border border-[#E2D4F7] bg-white shadow-2xl shadow-purple-200">
       {loading && suggestions.length === 0 && (
-        <div className="px-4 py-3 text-sm text-[#6E6B82]">Searching…</div>
+        <div className="px-4 py-3 text-sm text-[#6B6580]">Searching…</div>
       )}
       {suggestions.map((s, i) =>
         s.type === "paper" ? (
@@ -57,12 +57,12 @@ export function SearchSuggestions({ query, visible, onSelectPaperTitle, onSelect
               e.preventDefault();
               onSelectPaperTitle(s.title);
             }}
-            className="flex w-full items-start gap-2.5 border-b border-[#211E31] px-4 py-2.5 text-left last:border-b-0 hover:bg-[#1D1A2B]"
+            className="flex w-full items-start gap-2.5 border-b border-[#EADCFB] px-4 py-2.5 text-left last:border-b-0 hover:bg-[#FBF8FF]"
           >
             <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#8B5CF6]" />
             <div className="min-w-0">
-              <p className="truncate text-sm text-[#F4F3F8]">{s.title}</p>
-              {s.journal && <p className="truncate text-xs text-[#6E6B82]">{s.journal}</p>}
+              <p className="truncate text-sm text-[#1E1B2E]">{s.title}</p>
+              {s.journal && <p className="truncate text-xs text-[#6B6580]">{s.journal}</p>}
             </div>
           </button>
         ) : (
@@ -72,10 +72,10 @@ export function SearchSuggestions({ query, visible, onSelectPaperTitle, onSelect
               e.preventDefault();
               onSelectKeyword(s.keyword);
             }}
-            className="flex w-full items-center gap-2.5 border-b border-[#211E31] px-4 py-2.5 text-left last:border-b-0 hover:bg-[#1D1A2B]"
+            className="flex w-full items-center gap-2.5 border-b border-[#EADCFB] px-4 py-2.5 text-left last:border-b-0 hover:bg-[#FBF8FF]"
           >
-            <Hash className="h-3.5 w-3.5 shrink-0 text-[#9C99AE]" />
-            <span className="text-sm text-[#B4B1C2]">{s.keyword}</span>
+            <Hash className="h-3.5 w-3.5 shrink-0 text-[#7C3AED]" />
+            <span className="text-sm font-medium text-[#4B4560]">{s.keyword}</span>
           </button>
         )
       )}

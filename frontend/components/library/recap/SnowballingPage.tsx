@@ -13,7 +13,7 @@ import { Input } from "./components/ui/input";
 import { ScrollArea } from "./components/ui/scroll-area";
 import { Separator } from "./components/ui/separator";
 import { Search, GitBranch, ArrowUp, ArrowDown, Sparkles, Snowflake, BookOpen } from "lucide-react";
-import { PaperCard } from "./components/ui/papercard";
+import { PaperCard } from "./components/PaperCard";
 import {
   searchForSnowballing,
   getSnowballingResults,
@@ -24,9 +24,11 @@ import {
   getSnowballGraph,
 } from "./lib/api";
 import { Paper } from "./types/paper";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Badge } from "./components/ui/badge";
 import dynamic from "next/dynamic";
+// Same inline-detail pattern as SearchPage.tsx — adjust this path if your
+// PaperDetailPage export lives at a different relative location.
+import { PaperDetailPage } from "./full_paper";
 
 function authorName(a: any): string {
   if (!a) return "";
@@ -104,11 +106,6 @@ function SparkleField({ count = 10 }: { count?: number }) {
   );
 }
 
-// Decorative snowflake motif used as ambient background texture.
-// Large, glowing hero illustration: the seed paper at the center of a timeline,
-// with BACKWARD citations (older, foundational work) flowing in from one side
-// and FORWARD citations (newer work that cites it) radiating out the other —
-// the core forward/backward citation concept, rendered with a neon glow.
 function CitationFlowHeroIllustration({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 520 360" className={className} xmlns="http://www.w3.org/2000/svg">
@@ -153,15 +150,12 @@ function CitationFlowHeroIllustration({ className = "" }: { className?: string }
 
       <rect width="520" height="360" rx="22" fill="url(#heroBg)" />
 
-      {/* ambient glow blobs */}
       <circle cx="120" cy="280" r="90" fill="#3b82f6" opacity="0.12" filter="url(#softGlow)" />
       <circle cx="410" cy="90" r="100" fill="#22c55e" opacity="0.12" filter="url(#softGlow)" />
       <circle cx="260" cy="180" r="120" fill="url(#seedGlowGrad)" />
 
-      {/* timeline axis: older -> newer */}
       <line x1="60" y1="300" x2="460" y2="60" stroke="#d8b4fe" strokeWidth="2" strokeDasharray="2 8" strokeLinecap="round" />
 
-      {/* BACKWARD citations: older papers this work builds on, glowing blue, arrows pointing INTO the seed */}
       <g filter="url(#neonGlow)">
         <circle cx="95" cy="290" r="26" fill="url(#backwardNode)" />
         <circle cx="150" cy="250" r="22" fill="url(#backwardNode)" />
@@ -177,7 +171,6 @@ function CitationFlowHeroIllustration({ className = "" }: { className?: string }
         <rect x="177" y="197" width="16" height="16" rx="2" transform="rotate(-8 185 205)" />
       </g>
 
-      {/* FORWARD citations: newer papers that cite this one, glowing green, arrows pointing OUT from the seed */}
       <g filter="url(#neonGlow)">
         <circle cx="335" cy="155" r="18" fill="url(#forwardNode)" />
         <circle cx="375" cy="110" r="22" fill="url(#forwardNode)" />
@@ -193,7 +186,6 @@ function CitationFlowHeroIllustration({ className = "" }: { className?: string }
         <rect x="420" y="60" width="20" height="20" rx="2.5" transform="rotate(10 430 70)" />
       </g>
 
-      {/* arrow marker defs */}
       <defs>
         <marker id="arrowBlue" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
           <path d="M0,0 L8,4 L0,8 Z" fill="#3b82f6" />
@@ -203,7 +195,6 @@ function CitationFlowHeroIllustration({ className = "" }: { className?: string }
         </marker>
       </defs>
 
-      {/* seed paper at the center, glowing purple */}
       <g filter="url(#neonGlow)">
         <circle cx="260" cy="180" r="38" fill="url(#seedCore)" />
       </g>
@@ -215,22 +206,18 @@ function CitationFlowHeroIllustration({ className = "" }: { className?: string }
         <line x1="6" y1="23" x2="20" y2="23" stroke="#a855f7" strokeWidth="2" />
       </g>
 
-      {/* sparkle glints */}
       <g fill="#fde047">
         <circle cx="440" cy="45" r="3" />
         <circle cx="60" cy="255" r="2.5" />
         <circle cx="300" cy="100" r="2" />
       </g>
 
-      {/* labels */}
       <text x="70" y="325" fontSize="13" fontWeight="700" fill="#2563eb">Backward</text>
       <text x="405" y="35" fontSize="13" fontWeight="700" fill="#16a34a">Forward</text>
     </svg>
   );
 }
 
-// Compact glowing icon: papers flowing UP INTO the seed — used on the
-// Forward Citations card to visually reinforce "newer work citing this paper".
 function ForwardCitationGlowIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 100 100" className={className} xmlns="http://www.w3.org/2000/svg">
@@ -260,8 +247,6 @@ function ForwardCitationGlowIcon({ className = "" }: { className?: string }) {
   );
 }
 
-// Compact glowing icon: papers flowing DOWN OUT OF the seed — used on the
-// Backward Citations card to reinforce "older, foundational work referenced".
 function BackwardCitationGlowIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 100 100" className={className} xmlns="http://www.w3.org/2000/svg">
@@ -291,8 +276,6 @@ function BackwardCitationGlowIcon({ className = "" }: { className?: string }) {
   );
 }
 
-// Bright illustration: papers blooming outward in a citation network, echoing
-// the snowflake / snowball-effect motif used through the page.
 function CitationBloomIllustration({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 300 220" className={className} xmlns="http://www.w3.org/2000/svg">
@@ -323,7 +306,6 @@ function CitationBloomIllustration({ className = "" }: { className?: string }) {
         </linearGradient>
       </defs>
       <rect width="300" height="220" rx="18" fill="url(#bloomBg)" />
-      {/* connecting lines from seed paper to citations */}
       <g stroke="#d8b4fe" strokeWidth="2">
         <line x1="150" y1="110" x2="70" y2="55" />
         <line x1="150" y1="110" x2="230" y2="50" />
@@ -332,7 +314,6 @@ function CitationBloomIllustration({ className = "" }: { className?: string }) {
         <line x1="150" y1="110" x2="95" y2="185" />
         <line x1="150" y1="110" x2="55" y2="130" />
       </g>
-      {/* outer citation nodes (paper icons) */}
       <g>
         <circle cx="70" cy="55" r="18" fill="url(#nodeA)" stroke="#ffffff" strokeWidth="2" />
         <circle cx="230" cy="50" r="16" fill="url(#nodeB)" stroke="#ffffff" strokeWidth="2" />
@@ -341,13 +322,11 @@ function CitationBloomIllustration({ className = "" }: { className?: string }) {
         <circle cx="95" cy="185" r="15" fill="url(#nodeB)" stroke="#ffffff" strokeWidth="2" />
         <circle cx="55" cy="130" r="14" fill="url(#nodeC)" stroke="#ffffff" strokeWidth="2" />
       </g>
-      {/* sparkle accents on a few nodes */}
       <g fill="#fef08a">
         <circle cx="82" cy="43" r="2.5" />
         <circle cx="240" cy="40" r="2" />
         <circle cx="215" cy="178" r="2.2" />
       </g>
-      {/* seed paper at the center */}
       <circle cx="150" cy="110" r="30" fill="url(#coreGrad)" stroke="#f0abfc" strokeWidth="3" />
       <g transform="translate(138,95)">
         <rect width="24" height="30" rx="2.5" fill="#ffffff" />
@@ -413,6 +392,12 @@ export default function SnowballingPage() {
   const [loadingRelated, setLoadingRelated] = useState(false);
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [loadedTabs, setLoadedTabs] = useState<Set<ActiveTab>>(new Set());
+
+  // Stack of paper IDs currently opened inline (same pattern as SearchPage.tsx)
+  // — opening a paper here renders PaperDetailPage in place of this page's
+  // own UI instead of navigating to /papers/[id], so "back" just pops the
+  // stack instead of losing the whole snowball session.
+  const [paperStack, setPaperStack] = useState<string[]>([]);
 
   // Track whether we've finished restoring from sessionStorage before we
   // start persisting — otherwise the very first render (empty state) would
@@ -600,6 +585,25 @@ export default function SnowballingPage() {
     };
   };
 
+  const TAB_LABELS: Record<ActiveTab, string> = {
+    citations: "Citations",
+    keywords: "Keywords",
+    frontier: "Frontier",
+    related: "Related",
+    graph: "Graph",
+  };
+
+  if (paperStack.length > 0) {
+    const currentPaperId = paperStack[paperStack.length - 1];
+    return (
+      <PaperDetailPage
+        paperId={currentPaperId}
+        onBack={() => setPaperStack((prev) => prev.slice(0, -1))}
+        onOpenPaper={(id) => setPaperStack((prev) => [...prev, id])}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-white via-purple-50 to-fuchsia-50 p-6 relative overflow-hidden">
       {/* Twinkle / shimmer keyframes for the glitter aesthetic */}
@@ -718,105 +722,118 @@ export default function SnowballingPage() {
           </CardContent>
         </Card>
 
-        {/* Results with Tabs */}
+        {/* Results with Tabs (plain state-driven tab bar — no Tabs primitive) */}
         {status === "complete" && (
-          <Tabs value={activeTab} onValueChange={(v) => {
-            setActiveTab(v as ActiveTab);
-            loadTabData(v as ActiveTab);
-          }} className="space-y-4">
-            <TabsList className="grid w-full grid-cols-5 bg-white/90 backdrop-blur-sm border border-purple-200 shadow-sm">
-              <TabsTrigger value="citations" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-gray-600 font-medium">Citations</TabsTrigger>
-              <TabsTrigger value="keywords" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-gray-600 font-medium">Keywords</TabsTrigger>
-              <TabsTrigger value="frontier" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-gray-600 font-medium">Frontier</TabsTrigger>
-              <TabsTrigger value="related" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-gray-600 font-medium">Related</TabsTrigger>
-              <TabsTrigger value="graph" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-gray-600 font-medium">Graph</TabsTrigger>
-            </TabsList>
+          <div className="space-y-4">
+            <div className="grid w-full grid-cols-5 gap-1 bg-white/90 backdrop-blur-sm border border-purple-200 shadow-sm rounded-lg p-1">
+              {(Object.keys(TAB_LABELS) as ActiveTab[]).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab);
+                    loadTabData(tab);
+                  }}
+                  className={`rounded-md py-1.5 text-sm font-medium transition-colors ${
+                    activeTab === tab
+                      ? "bg-purple-600 text-white"
+                      : "text-gray-600 hover:bg-purple-50"
+                  }`}
+                >
+                  {TAB_LABELS[tab]}
+                </button>
+              ))}
+            </div>
 
             {/* Citations Tab */}
-            <TabsContent value="citations" className="space-y-4">
-              {/* Forward Citations */}
-              <Card className="bg-white/90 backdrop-blur-sm border border-purple-200 shadow-lg shadow-purple-100/60">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <ForwardCitationGlowIcon className="h-14 w-14 shrink-0" />
-                      <div>
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Forward Citations
-                        </h2>
-                        <p className="text-sm text-gray-500">
-                          Papers that cite this work ({forwardCitations.length} in DB out of {forwardTotalCitations} total)
-                        </p>
+            {activeTab === "citations" && (
+              <div className="space-y-4">
+                {/* Forward Citations */}
+                <Card className="bg-white/90 backdrop-blur-sm border border-purple-200 shadow-lg shadow-purple-100/60">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <ForwardCitationGlowIcon className="h-14 w-14 shrink-0" />
+                        <div>
+                          <h2 className="text-lg font-semibold text-gray-900">
+                            Forward Citations
+                          </h2>
+                          <p className="text-sm text-gray-500">
+                            Papers that cite this work ({forwardCitations.length} in DB out of {forwardTotalCitations} total)
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[300px] pr-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {forwardCitations.map((paper) => (
-                        <div key={paper.id} className="relative">
-                          <PaperCard
-                            paper={paper}
-                            compact
-                            showAbstract={false}
-                            onToggleSave={handleAddToLibrary}
-                          />
-                          <div className="absolute -top-3 -left-2">
-                            <div className="h-6 w-6 rounded-full bg-emerald-500 flex items-center justify-center shadow-md shadow-emerald-300/70">
-                              <ArrowUp className="h-3 w-3 text-white" />
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[300px] pr-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {forwardCitations.map((paper) => (
+                          <div key={paper.id} className="relative">
+                            <PaperCard
+                              paper={paper}
+                              compact
+                              showAbstract={false}
+                              onToggleSave={handleAddToLibrary}
+                              onOpenPaper={(id) => setPaperStack((prev) => [...prev, id])}
+                            />
+                            <div className="absolute -top-3 -left-2">
+                              <div className="h-6 w-6 rounded-full bg-emerald-500 flex items-center justify-center shadow-md shadow-emerald-300/70">
+                                <ArrowUp className="h-3 w-3 text-white" />
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
 
-              {/* Backward Citations */}
-              <Card className="bg-white/90 backdrop-blur-sm border border-purple-200 shadow-lg shadow-purple-100/60">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <BackwardCitationGlowIcon className="h-14 w-14 shrink-0" />
-                      <div>
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Backward Citations
-                        </h2>
-                        <p className="text-sm text-gray-500">
-                          Papers cited by this work ({backwardCitations.length} in DB out of {backwardTotalRefs} total)
-                        </p>
+                {/* Backward Citations */}
+                <Card className="bg-white/90 backdrop-blur-sm border border-purple-200 shadow-lg shadow-purple-100/60">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <BackwardCitationGlowIcon className="h-14 w-14 shrink-0" />
+                        <div>
+                          <h2 className="text-lg font-semibold text-gray-900">
+                            Backward Citations
+                          </h2>
+                          <p className="text-sm text-gray-500">
+                            Papers cited by this work ({backwardCitations.length} in DB out of {backwardTotalRefs} total)
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[300px] pr-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {backwardCitations.map((paper) => (
-                        <div key={paper.id} className="relative">
-                          <PaperCard
-                            paper={paper}
-                            compact
-                            showAbstract={false}
-                            onToggleSave={handleAddToLibrary}
-                          />
-                          <div className="absolute -top-3 -left-2">
-                            <div className="h-6 w-6 rounded-full bg-blue-500 flex items-center justify-center shadow-md shadow-blue-300/70">
-                              <ArrowDown className="h-3 w-3 text-white" />
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[300px] pr-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {backwardCitations.map((paper) => (
+                          <div key={paper.id} className="relative">
+                            <PaperCard
+                              paper={paper}
+                              compact
+                              showAbstract={false}
+                              onToggleSave={handleAddToLibrary}
+                              onOpenPaper={(id) => setPaperStack((prev) => [...prev, id])}
+                            />
+                            <div className="absolute -top-3 -left-2">
+                              <div className="h-6 w-6 rounded-full bg-blue-500 flex items-center justify-center shadow-md shadow-blue-300/70">
+                                <ArrowDown className="h-3 w-3 text-white" />
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
             {/* Keywords Tab */}
-            <TabsContent value="keywords">
+            {activeTab === "keywords" && (
               <Card className="bg-white/90 backdrop-blur-sm border border-purple-200 shadow-lg shadow-purple-100/60">
                 <CardHeader>
                   <div>
@@ -849,7 +866,7 @@ export default function SnowballingPage() {
                         {keywordData.expanded_papers.map((paper, idx) => (
                           <Card
                             key={idx}
-                            onClick={() => router.push(`/papers/${paper.id}`)}
+                            onClick={() => setPaperStack((prev) => [...prev, paper.id])}
                             className="cursor-pointer border-purple-100 bg-purple-50/50 hover:shadow-md hover:shadow-purple-200/60 hover:border-purple-300 transition-shadow"
                           >
                             <CardHeader className="pb-2">
@@ -881,10 +898,10 @@ export default function SnowballingPage() {
                   )}
                 </CardContent>
               </Card>
-            </TabsContent>
+            )}
 
             {/* Frontier Tab */}
-            <TabsContent value="frontier">
+            {activeTab === "frontier" && (
               <Card className="bg-white/90 backdrop-blur-sm border border-purple-200 shadow-lg shadow-purple-100/60">
                 <CardHeader>
                   <div>
@@ -907,7 +924,7 @@ export default function SnowballingPage() {
                         {frontierData.frontier_papers.map((paper, idx) => (
                           <Card
                             key={idx}
-                            onClick={() => router.push(`/papers/${paper.id}`)}
+                            onClick={() => setPaperStack((prev) => [...prev, paper.id])}
                             className="cursor-pointer border-purple-100 bg-purple-50/50 hover:shadow-md hover:shadow-purple-200/60 hover:border-purple-300 transition-shadow"
                           >
                             <CardHeader className="pb-2">
@@ -945,10 +962,10 @@ export default function SnowballingPage() {
                   )}
                 </CardContent>
               </Card>
-            </TabsContent>
+            )}
 
             {/* Related Tab */}
-            <TabsContent value="related">
+            {activeTab === "related" && (
               <Card className="bg-white/90 backdrop-blur-sm border border-purple-200 shadow-lg shadow-purple-100/60">
                 <CardHeader>
                   <div>
@@ -971,7 +988,7 @@ export default function SnowballingPage() {
                         {relatedData.related_papers.map((paper, idx) => (
                           <Card
                             key={idx}
-                            onClick={() => router.push(`/papers/${paper.id}`)}
+                            onClick={() => setPaperStack((prev) => [...prev, paper.id])}
                             className="cursor-pointer border-purple-100 bg-purple-50/50 hover:shadow-md hover:shadow-purple-200/60 hover:border-purple-300 transition-shadow"
                           >
                             <CardHeader className="pb-2">
@@ -1009,10 +1026,10 @@ export default function SnowballingPage() {
                   )}
                 </CardContent>
               </Card>
-            </TabsContent>
+            )}
 
             {/* Graph Tab */}
-            <TabsContent value="graph">
+            {activeTab === "graph" && (
               <Card className="bg-white/90 backdrop-blur-sm border border-purple-200 shadow-lg shadow-purple-100/60">
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -1080,8 +1097,8 @@ export default function SnowballingPage() {
                   )}
                 </CardContent>
               </Card>
-            </TabsContent>
-          </Tabs>
+            )}
+          </div>
         )}
 
         {/* Empty State */}

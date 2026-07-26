@@ -45,6 +45,20 @@ export interface SimilarPapersResult {
   results: Paper[];
 }
 
+export interface PaperDetail extends Paper {
+  pmid?: string;
+  source?: string;
+  fullText?: string;
+  ocrText?: string;
+  language?: string;
+  wordCount?: number;
+  createdAt?: string;
+  // These are DOI arrays (papers this one cites / is cited by), not counts —
+  // named distinctly from Paper.citations (a number) to avoid confusion.
+  referencedPaperDois: string[];
+  citingPaperDois: string[];
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';

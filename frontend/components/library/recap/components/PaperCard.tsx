@@ -4,9 +4,9 @@
 
 "use client";
 import { normalizeAuthors, normalizeKeywords } from "../lib/normalize";
-import { Card, CardContent, CardFooter, CardHeader } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader } from "./ui/card";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Paper } from "../types/paper";
 import { Bookmark, BookmarkCheck, ExternalLink, FolderPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -16,7 +16,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
+} from "./ui/dropdown-menu";
 
 interface PaperCardProps {
   paper: Paper;
@@ -26,6 +26,7 @@ interface PaperCardProps {
   collections?: Array<{ id: string; name: string }>;
   showAbstract?: boolean;
   compact?: boolean;
+  onOpenPaper?: (paperId: string) => void;
 }
 
 export function PaperCard({
@@ -36,6 +37,7 @@ export function PaperCard({
   collections,
   showAbstract = true,
   compact = false,
+  onOpenPaper,
 }: PaperCardProps) {
   const router = useRouter();
   const [isSaved, setIsSaved] = useState(saved);
@@ -47,7 +49,11 @@ export function PaperCard({
   };
 
   const handleCardClick = () => {
-    router.push(`/papers/${paper.id}`);
+    if (onOpenPaper) {
+      onOpenPaper(paper.id);
+    } else {
+      router.push(`/papers/${paper.id}`);
+    }
   };
 
   const handleKeywordClick = (keyword: string, e: React.MouseEvent) => {
@@ -61,16 +67,16 @@ export function PaperCard({
 
   return (
     <Card
-      className="group cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-purple-700 border-gray-800 bg-linear-to-br from-gray-900 to-purple-950/20"
+      className="group cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-purple-200/60 hover:border-purple-400 border-purple-200 bg-linear-to-br from-white to-purple-50/60"
       onClick={handleCardClick}
     >
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-white group-hover:text-purple-400 transition-colors line-clamp-2">
+            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-purple-600 transition-colors line-clamp-2">
               {paper.title}
             </h3>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="text-sm text-gray-500 mt-1">
               {normalizeAuthors(paper.authors).join(", ")}
             </p>
           </div>
@@ -79,11 +85,11 @@ export function PaperCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-gray-500 hover:text-purple-400 hover:bg-purple-900/40"
+                className="h-8 w-8 text-gray-400 hover:text-purple-600 hover:bg-purple-50"
                 onClick={handleSave}
               >
                 {isSaved ? (
-                  <BookmarkCheck className="h-4 w-4 fill-purple-400 text-purple-400" />
+                  <BookmarkCheck className="h-4 w-4 fill-purple-600 text-purple-600" />
                 ) : (
                   <Bookmark className="h-4 w-4" />
                 )}
@@ -91,21 +97,23 @@ export function PaperCard({
             )}
             {onAddToCollection && collections && (
               <DropdownMenu>
-                <DropdownMenuTrigger>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-gray-500 hover:text-indigo-400 hover:bg-indigo-900/40"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <FolderPlus className="h-4 w-4" />
-                  </Button>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  }
+                >
+                  <FolderPlus className="h-4 w-4" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-gray-200">
+                <DropdownMenuContent align="end" className="bg-white border-purple-200 text-gray-700">
                   {collections.map((collection) => (
                     <DropdownMenuItem
                       key={collection.id}
-                      className="focus:bg-purple-900/40 focus:text-white"
+                      className="focus:bg-purple-50 focus:text-purple-900"
                       onClick={(e) => {
                         e.stopPropagation();
                         onAddToCollection?.(paper.id, collection.id);
@@ -122,14 +130,14 @@ export function PaperCard({
       </CardHeader>
 
       <CardContent className="pb-2">
-        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-400 mb-2">
-          <span className="font-medium text-gray-300">{paper.journal}</span>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500 mb-2">
+          <span className="font-medium text-gray-700">{paper.journal}</span>
           <span>•</span>
           <span>{paper.year}</span>
           {paper.citations !== undefined && (
             <>
               <span>•</span>
-              <span className="text-purple-400 font-medium">
+              <span className="text-purple-600 font-medium">
                 {paper.citations} citations
               </span>
             </>
@@ -137,7 +145,7 @@ export function PaperCard({
         </div>
 
         {showAbstract && !compact && (
-          <p className="text-sm text-gray-400 line-clamp-3 mb-3">
+          <p className="text-sm text-gray-600 line-clamp-3 mb-3">
             {truncatedAbstract}
           </p>
         )}
@@ -147,14 +155,14 @@ export function PaperCard({
           <Badge
             key={keyword}
             variant="secondary"
-            className="bg-purple-900/40 text-purple-300 hover:bg-purple-800/50 cursor-pointer text-xs"
+            className="bg-purple-100 text-purple-700 hover:bg-purple-200 cursor-pointer text-xs"
             onClick={(e) => handleKeywordClick(keyword, e)}
           >
             {keyword}
           </Badge>
         ))}
         {!compact && normalizeKeywords(paper.keywords).length > 3 && (
-          <Badge variant="outline" className="text-xs border-gray-700 text-gray-400">
+          <Badge variant="outline" className="text-xs border-purple-200 text-gray-500">
             +{normalizeKeywords(paper.keywords).length - 3}
           </Badge>
         )}
@@ -166,7 +174,7 @@ export function PaperCard({
           <Button
             variant="ghost"
             size="sm"
-            className="text-xs text-gray-400 hover:text-purple-400 h-7"
+            className="text-xs text-gray-500 hover:text-purple-600 h-7"
             onClick={(e) => {
               e.stopPropagation();
               window.open(`https://doi.org/${paper.doi}`, "_blank");
