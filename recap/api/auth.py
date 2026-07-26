@@ -16,7 +16,7 @@ from core.auth import (
 from app.models import User
 
 router = APIRouter(
-    prefix="/auth",
+    prefix="",
     tags=["auth"],
     responses={404: {"description": "Not found"}},
 )
