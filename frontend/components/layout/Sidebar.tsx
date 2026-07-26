@@ -100,17 +100,7 @@ export function Sidebar({ activePage, setActivePage }: SidebarProps) {
 
       <div className="flex-1" />
 
-      <div className={`mt-4 ${collapsed ? "px-2" : "px-6"}`}>
-        <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3"} p-2 rounded-xl hover:bg-surface-hover cursor-pointer transition-colors border border-transparent hover:border-border-light`}>
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-success shadow-sm flex-shrink-0" />
-          {!collapsed && (
-            <div className="flex flex-col">
-              <span className="text-xs font-bold text-foreground">Dr. Researcher</span>
-              <span className="text-[10px] text-text-muted">Lead Investigator</span>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Bottom spacing */}
     </div>
   );
 }
