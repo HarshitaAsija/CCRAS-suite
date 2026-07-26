@@ -4,7 +4,7 @@
 
 "use client";
 
-import { Badge } from "../components/ui/badge";
+import { Badge } from "./ui/badge";
 import { useRouter } from "next/navigation";
 
 interface KeywordBadgeProps {

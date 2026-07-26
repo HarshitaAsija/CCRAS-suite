@@ -1,18 +1,19 @@
 // Search Results Page — KRITA
 // Full-text (BM25) / semantic (pgvector) / hybrid (RRF) search, faceted filtering,
-// search-as-you-type suggestions, saved searches + alerts, and per-result
-// "find similar" semantic discovery.
+// search-as-you-type suggestions, saved searches + alerts, per-result
+// "find similar" semantic discovery, and search analytics.
 
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { Search, SlidersHorizontal, ChevronLeft, ChevronRight, X, Bookmark, BarChart3 } from "lucide-react";
 import { ResultCard } from "./components/ResultCard";
 import { SearchSuggestions } from "./components/SearchSuggestions";
 import { SavedSearchesMenu, SavedSearchesTrigger } from "./components/SavedSearchesMenu";
 import { AnalyticsPanel } from "./components/AnalyticsPanel";
-import { searchPapers } from "./lib/api";
-import { getCurrentUserId } from "./lib/user";
+import { PaperDetailPage } from "./full_paper";
+import { searchPapers, getEffectiveUserId } from "./lib/api";
 import { Paper, SearchMode, SavedSearch } from "./types/paper";
 
 const MODE_LABELS: Record<SearchMode, { label: string; hint: string }> = {
@@ -45,6 +46,33 @@ function parseIntSafe(v: string | null, fallback: number) {
 
 function parseList(v: string | null): string[] {
   return v ? v.split(",").map((s) => decodeURIComponent(s)).filter(Boolean) : [];
+}
+
+function buildSearchUrl(params: {
+  q: string;
+  mode: SearchMode;
+  yearRange: [number, number];
+  journals: string[];
+  authors: string[];
+  keywords: string[];
+  page: number;
+  pathname: string;
+}) {
+  const sp = new URLSearchParams();
+  sp.set("q", params.q);
+  sp.set("type", params.mode);
+  if (params.yearRange[0] !== YEAR_MIN) sp.set("year_min", String(params.yearRange[0]));
+  if (params.yearRange[1] !== YEAR_MAX) sp.set("year_max", String(params.yearRange[1]));
+  if (params.journals.length) sp.set("journals", params.journals.map(encodeURIComponent).join(","));
+  if (params.authors.length) sp.set("authors", params.authors.map(encodeURIComponent).join(","));
+  if (params.keywords.length) sp.set("keywords", params.keywords.map(encodeURIComponent).join(","));
+  if (params.page !== 1) sp.set("page", String(params.page));
+  // Navigate relative to wherever this component is currently mounted
+  // (e.g. "/dashboard" when rendered as a RecapLibrary tab, or "/search"
+  // when rendered standalone) instead of a hardcoded "/search" — otherwise
+  // updating the URL from inside the dashboard tab would navigate the
+  // browser to a real /search route and unmount the dashboard shell.
+  return `${params.pathname}?${sp.toString()}`;
 }
 
 // ============================================================================
@@ -295,7 +323,7 @@ function AmbientPageMotifs() {
       <MagnifierIcon className="absolute right-[6.5%] top-[34%] h-7 w-7 text-[#6366F1] opacity-[0.12]" />
       <AtomIcon className="absolute right-[3%] top-[46%] h-8 w-8 text-[#818CF8] opacity-[0.10]" />
       <BookIcon className="absolute right-[7%] top-[57%] h-7 w-7 text-[#7C3AED] opacity-[0.11]" />
-      <PdfIcon className="absolute right-[3%] top-[68%] h-6 w-6 text-[#6366F1] opacity-[0.12]" />
+      <PdfIcon className="absolute right-[3%] top-[68%] h-6 w-6 text-[#7C3AED] opacity-[0.12]" />
       <LinkIcon className="absolute right-[8%] top-[78%] h-6 w-6 text-[#6366F1] opacity-[0.11]" />
       <NeuralNodeIcon className="absolute right-[2%] top-[89%] h-9 w-9 text-[#6366F1] opacity-[0.10]" />
       <ChartIcon className="absolute right-[6%] top-[97%] h-7 w-7 text-[#818CF8] opacity-[0.10]" />
@@ -333,10 +361,46 @@ function EmptyStateWatermark() {
 // ============================================================================
 
 export default function SearchPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
   const [userId, setUserId] = useState<string | null>(null);
+  // When set, a paper's detail view is shown in place of the normal search
+  // UI, without navigating to /papers/[id]. That route change would unmount
+  // the whole BrahmaApp/RecapLibrary shell (see the unmount-cleanup effect
+  // below for why that's a problem) — rendering PaperDetailPage inline here
+  // avoids ever leaving this route, so there's nothing to lose and nothing
+  // to restore on "back".
+  // Stack (not a single value) so that opening a similar/citing paper from
+  // *within* an already-open paper — which can happen any number of levels
+  // deep — lets "back" unwind one level at a time, instead of just dropping
+  // straight back to search results from wherever you were.
+  const [paperStack, setPaperStack] = useState<string[]>([]);
+
+  // Clear this page's own query params (q, type, filters, page) on unmount —
+  // but ONLY if we're still logically on the same route. RecapLibrary
+  // renders its tabs (Search, Upload, RAG, etc.) by conditionally mounting
+  // components under a single shared route ("/dashboard"), so switching to
+  // a different tab unmounts SearchPage without ever changing the URL —
+  // meaning q=...&type=... would otherwise linger in the address bar
+  // forever, on every other tab. But this same unmount also fires when the
+  // user genuinely navigates to a different page (e.g. opening a paper at
+  // /papers/[id]), where clearing params would be wrong — it would stomp on
+  // that page's URL instead. Comparing against the live
+  // window.location.pathname at cleanup time (rather than the pathname
+  // captured at mount) tells them apart: it's still "/dashboard" for a tab
+  // switch, but already something else for a real navigation.
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && window.location.pathname === pathname) {
+        router.replace(pathname);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    getCurrentUserId().then(setUserId);
+    setUserId(getEffectiveUserId());
   }, []);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -401,7 +465,7 @@ export default function SearchPage() {
     yearRange[1] !== YEAR_MAX;
 
   // --- Search execution ---
-  const performSearch = async (query: string, mode: SearchMode) => {
+  const performSearch = async (query: string, mode: SearchMode, cacheKey?: string) => {
     if (!query.trim()) return;
     setLoading(true);
     setSearchError(null);
@@ -414,7 +478,12 @@ export default function SearchPage() {
       );
       setResults(papers);
       setBackendTotal(total);
-      setCurrentPage(1);
+      if (cacheKey) {
+        sessionStorage.setItem(
+          SEARCH_RESULTS_CACHE_KEY,
+          JSON.stringify({ key: cacheKey, results: papers, total })
+        );
+      }
     } catch (error: any) {
       console.error("Search failed:", error);
       setSearchError(error?.message ?? "Search failed. Please try again.");
@@ -425,63 +494,98 @@ export default function SearchPage() {
     }
   };
 
-  // Initialize state with defaults, optionally restoring from sessionStorage cache
+  // Initialize (and re-sync) from URL params — this is the single source of
+  // truth for query, mode, filters, and page. Runs on mount and any time the
+  // URL changes, including browser Back/Forward navigation.
   useEffect(() => {
-    // Try to restore from sessionStorage cache first
+    const q = searchParams.get("q");
+    const type = searchParams.get("type") as SearchMode | null;
+    const mode: SearchMode = type && MODE_LABELS[type] ? type : "hybrid";
+
+    if (q) setSearchQuery(q);
+    setSearchMode(mode);
+
+    setYearRange([
+      parseIntSafe(searchParams.get("year_min"), YEAR_MIN),
+      parseIntSafe(searchParams.get("year_max"), YEAR_MAX),
+    ]);
+    setSelectedJournals(parseList(searchParams.get("journals")));
+    setSelectedAuthors(parseList(searchParams.get("authors")));
+    setSelectedKeywords(parseList(searchParams.get("keywords")));
+    setCurrentPage(parseIntSafe(searchParams.get("page"), 1));
+
+    if (!q) return;
+
+    const key = `${q}::${mode}`;
+    if (lastFetchedKeyRef.current === key) return; // already have these exact results loaded
+    lastFetchedKeyRef.current = key;
+
+    // Try the in-tab cache first so returning via Back is instant instead of
+    // showing the loading skeleton again for a search we just ran.
     const cached = sessionStorage.getItem(SEARCH_RESULTS_CACHE_KEY);
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        // Only restore if we have valid cached data
-        if (parsed && typeof parsed === 'object') {
-          setResults(parsed.results || []);
-          setBackendTotal(parsed.total || 0);
+        if (parsed.key === key) {
+          setResults(parsed.results);
+          setBackendTotal(parsed.total);
           setLoading(false);
           setSearchError(null);
-          // Don't return early - we still need to set up the search query/mode below
+          return;
         }
-        // other sources if available, but we have the results ready
       } catch {
-        // corrupt cache entry — continue with normal initialization
+        // corrupt cache entry — fall through to a normal fetch
       }
     }
 
-    // Set default values if not already set by cache restoration
-    if (searchQuery === "") {
-      // Try to get from sessionStorage as fallback
-      const searchState = sessionStorage.getItem('krita_search_state');
-      if (searchState) {
-        try {
-          const parsed = JSON.parse(searchState);
-          if (parsed.query) setSearchQuery(parsed.query);
-          if (parsed.mode) setSearchMode(parsed.mode as SearchMode);
-          if (parsed.yearRange) setYearRange(parsed.yearRange);
-          if (parsed.selectedJournals) setSelectedJournals(parsed.selectedJournals);
-          if (parsed.selectedAuthors) setSelectedAuthors(parsed.selectedAuthors);
-          if (parsed.selectedKeywords) setSelectedKeywords(parsed.selectedKeywords);
-          if (parsed.currentPage) setCurrentPage(parsed.currentPage);
-        } catch {
-          // Ignore parsing errors and use defaults
-        }
-      }
-    }
-  }, []);
+    performSearch(q, mode, key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // Keep the URL in sync whenever filters or pagination change locally (via
+  // checkboxes, year inputs, or the pager) — so Back always restores the
+  // exact filtered/paginated view, not just the bare query.
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    const url = buildSearchUrl({
+      q: searchQuery,
+      mode: searchMode,
+      yearRange,
+      journals: selectedJournals,
+      authors: selectedAuthors,
+      keywords: selectedKeywords,
+      page: currentPage,
+      pathname,
+    });
+    // Guard against a state<->URL sync loop: the "read URL into state" effect
+    // above always creates fresh array references (new setYearRange([...]),
+    // new parseList() arrays, etc.) even when the underlying values are
+    // unchanged. Without this check, that would make this effect's deps
+    // look "changed" every time it runs, causing router.replace to fire,
+    // which produces a new searchParams object, which re-triggers the read
+    // effect, forever. Comparing against the actual current URL breaks the
+    // cycle: we only navigate when something real has changed.
+    const currentUrl = `${pathname}?${searchParams.toString()}`;
+    if (url === currentUrl) return;
+    router.replace(url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [yearRange, selectedJournals, selectedAuthors, selectedKeywords, currentPage]);
 
   const runSearch = (query: string, mode: SearchMode) => {
-    setSearchQuery(query);
-    setSearchMode(mode);
     setSuggestionsOpen(false);
-    // Save search state to sessionStorage for potential restoration
-    sessionStorage.setItem('krita_search_state', JSON.stringify({
-      query,
+    // A brand-new search is a fresh navigable state (and resets filters/page),
+    // so it gets its own history entry via push rather than replace.
+    const url = buildSearchUrl({
+      q: query,
       mode,
-      yearRange,
-      selectedJournals: [],
-      selectedAuthors: [],
-      selectedKeywords: [],
-      currentPage: 1
-    }));
-    performSearch(query, mode);
+      yearRange: [YEAR_MIN, YEAR_MAX],
+      journals: [],
+      authors: [],
+      keywords: [],
+      page: 1,
+      pathname,
+    });
+    router.push(url);
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -502,16 +606,6 @@ export default function SearchPage() {
   ) => {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
     setCurrentPage(1);
-    // Save updated filters to sessionStorage
-    sessionStorage.setItem('krita_search_state', JSON.stringify({
-      searchQuery,
-      searchMode,
-      yearRange,
-      selectedJournals,
-      selectedAuthors,
-      selectedKeywords,
-      currentPage
-    }));
   };
 
   const clearFilters = () => {
@@ -520,17 +614,18 @@ export default function SearchPage() {
     setSelectedAuthors([]);
     setSelectedKeywords([]);
     setCurrentPage(1);
-    // Save cleared filters to sessionStorage
-    sessionStorage.setItem('krita_search_state', JSON.stringify({
-      searchQuery,
-      searchMode,
-      yearRange: [YEAR_MIN, YEAR_MAX],
-      selectedJournals: [],
-      selectedAuthors: [],
-      selectedKeywords: [],
-      currentPage: 1
-    }));
   };
+
+  if (paperStack.length > 0) {
+    const currentPaperId = paperStack[paperStack.length - 1];
+    return (
+      <PaperDetailPage
+        paperId={currentPaperId}
+        onBack={() => setPaperStack((prev) => prev.slice(0, -1))}
+        onOpenPaper={(id) => setPaperStack((prev) => [...prev, id])}
+      />
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-white">
@@ -659,19 +754,19 @@ export default function SearchPage() {
 
           <div className="mt-3 flex items-center justify-between text-sm">
             <p className="text-[#6B6478]">
-              <span className="text-[#F4F3F8] font-medium">{filteredResults.length}</span>
+              <span className="font-medium text-[#1E1B2E]">{filteredResults.length}</span>
               {backendTotal > results.length && <> of {backendTotal}</>} result
               {filteredResults.length !== 1 ? "s" : ""}
               {searchQuery && (
                 <>
                   {" "}
-                  for "<span className="font-medium text-[#B9AEFF]">{searchQuery}</span>"
+                  for "<span className="font-medium text-[#6D28D9]">{searchQuery}</span>"
                 </>
               )}
-              <span className="ml-2 text-xs text-[#6E6B82]">via {MODE_LABELS[searchMode].hint}</span>
+              <span className="ml-2 text-xs text-[#A5A0B8]">via {MODE_LABELS[searchMode].hint}</span>
             </p>
             {hasActiveFilters && (
-              <button onClick={clearFilters} className="inline-flex items-center gap-1 text-[#B9AEFF] hover:text-[#F4F3F8]">
+              <button onClick={clearFilters} className="inline-flex items-center gap-1 text-[#6D28D9] hover:text-[#4C1D95]">
                 <X className="h-3 w-3" />
                 Clear filters
               </button>
@@ -680,19 +775,19 @@ export default function SearchPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl px-4 py-6">
+      <div className="relative z-10 mx-auto max-w-7xl px-4 py-6">
         <div className="flex gap-6">
           {/* Facets */}
           <aside className={`w-64 shrink-0 space-y-5 ${showFilters ? "block" : "hidden lg:block"}`}>
-            <div className="rounded-2xl border border-[#2A2740] bg-[#15131F] p-4">
-              <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[#F4F3F8]">
-                <SlidersHorizontal className="h-4 w-4 text-[#8B5CF6]" />
+            <div className="rounded-2xl border border-[#E9E5FF] bg-white p-4 shadow-sm shadow-[#EDE9FE]">
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[#1E1B2E]">
+                <SlidersHorizontal className="h-4 w-4 text-[#7C3AED]" />
                 Filters
               </h3>
 
               {/* Year range */}
               <div className="mb-5">
-                <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#6E6B82]">Publication year</h4>
+                <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#A5A0B8]">Publication year</h4>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -702,20 +797,10 @@ export default function SearchPage() {
                     onChange={(e) => {
                       setYearRange([Number(e.target.value) || YEAR_MIN, yearRange[1]]);
                       setCurrentPage(1);
-                      // Save year range to sessionStorage
-                      sessionStorage.setItem('krita_search_state', JSON.stringify({
-                        searchQuery,
-                        searchMode,
-                        yearRange: [Number(e.target.value) || YEAR_MIN, yearRange[1]],
-                        selectedJournals,
-                        selectedAuthors,
-                        selectedKeywords,
-                        currentPage
-                      }));
                     }}
-                    className="w-full rounded-lg border border-[#2A2740] bg-[#100F19] px-2 py-1.5 text-xs text-[#F4F3F8] focus:border-[#8B5CF6] focus:outline-none"
+                    className="w-full rounded-lg border border-[#E4E0F5] bg-[#FBFAFF] px-2 py-1.5 text-xs text-[#1E1B2E] focus:border-[#7C3AED] focus:outline-none"
                   />
-                  <span className="text-xs text-[#6E6B82]">to</span>
+                  <span className="text-xs text-[#A5A0B8]">to</span>
                   <input
                     type="number"
                     value={yearRange[1]}
@@ -724,46 +809,34 @@ export default function SearchPage() {
                     onChange={(e) => {
                       setYearRange([yearRange[0], Number(e.target.value) || YEAR_MAX]);
                       setCurrentPage(1);
-                      // Save year range to sessionStorage
-                      sessionStorage.setItem('krita_search_state', JSON.stringify({
-                        searchQuery,
-                        searchMode,
-                        yearRange: [yearRange[0], Number(e.target.value) || YEAR_MAX],
-                        selectedJournals,
-                        selectedAuthors,
-                        selectedKeywords,
-                        currentPage
-                      }));
                     }}
-                    className="w-full rounded-lg border border-[#2A2740] bg-[#100F19] px-2 py-1.5 text-xs text-[#F4F3F8] focus:border-[#8B5CF6] focus:outline-none"
+                    className="w-full rounded-lg border border-[#E4E0F5] bg-[#FBFAFF] px-2 py-1.5 text-xs text-[#1E1B2E] focus:border-[#7C3AED] focus:outline-none"
                   />
                 </div>
               </div>
 
-              <div className="mb-5 h-px bg-[#211E31]" />
+              <div className="mb-5 h-px bg-[#E9E5FF]" />
 
               {/* Journals */}
               {allJournals.length > 0 && (
                 <>
                   <div className="mb-5">
-                    <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#6E6B82]">Journals</h4>
+                    <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#A5A0B8]">Journals</h4>
                     <div className="max-h-40 space-y-1.5 overflow-y-auto">
                       {allJournals.map((journal) => (
-                        <label key={journal} className="flex cursor-pointer items-center gap-2 text-xs text-[#B4B1C2] hover:text-[#F4F3F8]">
+                        <label key={journal} className="flex cursor-pointer items-center gap-2 text-xs text-[#4B4458] hover:text-[#1E1B2E]">
                           <input
                             type="checkbox"
                             checked={selectedJournals.includes(journal)}
-                            onChange={() => {
-                              toggleFromList(journal, selectedJournals, setSelectedJournals);
-                            }}
-                            className="accent-[#8B5CF6]"
+                            onChange={() => toggleFromList(journal, selectedJournals, setSelectedJournals)}
+                            className="accent-[#7C3AED]"
                           />
                           <span className="line-clamp-1">{journal}</span>
                         </label>
                       ))}
                     </div>
                   </div>
-                  <div className="mb-5 h-px bg-[#211E31]" />
+                  <div className="mb-5 h-px bg-[#E9E5FF]" />
                 </>
               )}
 
@@ -771,42 +844,38 @@ export default function SearchPage() {
               {allAuthors.length > 0 && (
                 <>
                   <div className="mb-5">
-                    <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#6E6B82]">Authors</h4>
+                    <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#A5A0B8]">Authors</h4>
                     <div className="max-h-40 space-y-1.5 overflow-y-auto">
                       {allAuthors.slice(0, 15).map((author) => (
-                        <label key={author} className="flex cursor-pointer items-center gap-2 text-xs text-[#B4B1C2] hover:text-[#F4F3F8]">
+                        <label key={author} className="flex cursor-pointer items-center gap-2 text-xs text-[#4B4458] hover:text-[#1E1B2E]">
                           <input
                             type="checkbox"
                             checked={selectedAuthors.includes(author)}
-                            onChange={() => {
-                              toggleFromList(author, selectedAuthors, setSelectedAuthors);
-                            }}
-                            className="accent-[#8B5CF6]"
+                            onChange={() => toggleFromList(author, selectedAuthors, setSelectedAuthors)}
+                            className="accent-[#7C3AED]"
                           />
                           <span className="line-clamp-1">{author}</span>
                         </label>
                       ))}
                     </div>
                   </div>
-                  <div className="mb-5 h-px bg-[#211E31]" />
+                  <div className="mb-5 h-px bg-[#E9E5FF]" />
                 </>
               )}
 
               {/* Keywords */}
               {allKeywords.length > 0 && (
                 <div>
-                  <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#6E6B82]">Keywords</h4>
+                  <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#A5A0B8]">Keywords</h4>
                   <div className="flex flex-wrap gap-1.5">
                     {allKeywords.map((keyword) => (
                       <button
                         key={keyword}
-                        onClick={() => {
-                          toggleFromList(keyword, selectedKeywords, setSelectedKeywords);
-                        }}
+                        onClick={() => toggleFromList(keyword, selectedKeywords, setSelectedKeywords)}
                         className={`rounded-full px-2.5 py-1 text-xs transition-colors ${
                           selectedKeywords.includes(keyword)
-                            ? "bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] text-white"
-                            : "border border-[#3A3260] bg-[#1D1A2B] text-[#B9AEFF] hover:border-[#8B5CF6]"
+                            ? "bg-gradient-to-r from-[#6366F1] to-[#7C3AED] text-white"
+                            : "border border-[#E4E0F5] bg-[#FBFAFF] text-[#6D28D9] hover:border-[#7C3AED]"
                         }`}
                       >
                         {keyword}
@@ -823,40 +892,46 @@ export default function SearchPage() {
             {loading ? (
               <div className="space-y-4">
                 {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="animate-pulse rounded-2xl border border-[#2A2740] bg-[#15131F] p-5">
-                    <div className="mb-3 h-5 w-3/4 rounded bg-[#211E31]" />
-                    <div className="mb-4 h-4 w-1/2 rounded bg-[#211E31]" />
-                    <div className="mb-2 h-4 w-full rounded bg-[#211E31]" />
-                    <div className="h-4 w-2/3 rounded bg-[#211E31]" />
+                  <div key={i} className="animate-pulse rounded-2xl border border-[#E9E5FF] bg-white p-5">
+                    <div className="mb-3 h-5 w-3/4 rounded bg-[#EDE9FE]" />
+                    <div className="mb-4 h-4 w-1/2 rounded bg-[#EDE9FE]" />
+                    <div className="mb-2 h-4 w-full rounded bg-[#EDE9FE]" />
+                    <div className="h-4 w-2/3 rounded bg-[#EDE9FE]" />
                   </div>
                 ))}
               </div>
             ) : searchError ? (
-              <div className="rounded-2xl border border-red-900/40 bg-red-950/20 p-8 text-center">
-                <p className="mb-1 font-semibold text-red-300">Search failed</p>
-                <p className="text-sm text-red-400/80">{searchError}</p>
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+                <p className="mb-1 font-semibold text-red-700">Search failed</p>
+                <p className="text-sm text-red-600">{searchError}</p>
               </div>
             ) : !searchQuery.trim() ? (
-              <div className="rounded-2xl border border-[#2A2740] bg-[#15131F] p-12 text-center">
-                <Search className="mx-auto mb-4 h-10 w-10 text-[#3A3260]" />
-                <h3 className="mb-1 text-lg font-semibold text-[#F4F3F8]">Search the corpus</h3>
-                <p className="text-sm text-[#6E6B82]">Try a topic, author name, or paste a DOI.</p>
+              <div className="relative overflow-hidden rounded-2xl border border-[#E9E5FF] bg-white p-12 text-center">
+                <EmptyStateWatermark />
+                <div className="relative">
+                  <Search className="mx-auto mb-4 h-10 w-10 text-[#C4B5FD]" />
+                  <h3 className="mb-1 text-lg font-semibold text-[#1E1B2E]">Search the corpus</h3>
+                  <p className="text-sm text-[#A5A0B8]">Try a topic, author name, or paste a DOI.</p>
+                </div>
               </div>
             ) : filteredResults.length === 0 ? (
-              <div className="rounded-2xl border border-[#2A2740] bg-[#15131F] p-12 text-center">
-                <Search className="mx-auto mb-4 h-10 w-10 text-[#3A3260]" />
-                <h3 className="mb-1 text-lg font-semibold text-[#F4F3F8]">No results found</h3>
-                <p className="mb-4 text-sm text-[#6E6B82]">
-                  {results.length > 0 ? "Try loosening your filters." : "Try adjusting your search terms or search mode."}
-                </p>
-                {hasActiveFilters && (
-                  <button
-                    onClick={clearFilters}
-                    className="rounded-lg border border-[#2A2740] px-4 py-2 text-sm text-[#B4B1C2] hover:border-[#4C3F91]"
-                  >
-                    Clear all filters
-                  </button>
-                )}
+              <div className="relative overflow-hidden rounded-2xl border border-[#E9E5FF] bg-white p-12 text-center">
+                <EmptyStateWatermark />
+                <div className="relative">
+                  <Search className="mx-auto mb-4 h-10 w-10 text-[#C4B5FD]" />
+                  <h3 className="mb-1 text-lg font-semibold text-[#1E1B2E]">No results found</h3>
+                  <p className="mb-4 text-sm text-[#A5A0B8]">
+                    {results.length > 0 ? "Try loosening your filters." : "Try adjusting your search terms or search mode."}
+                  </p>
+                  {hasActiveFilters && (
+                    <button
+                      onClick={clearFilters}
+                      className="rounded-lg border border-[#E4E0F5] px-4 py-2 text-sm text-[#4B4458] hover:border-[#7C3AED]"
+                    >
+                      Clear all filters
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <>
@@ -867,6 +942,7 @@ export default function SearchPage() {
                       paper={paper}
                       searchMode={searchMode}
                       onKeywordClick={(kw) => toggleFromList(kw, selectedKeywords, setSelectedKeywords)}
+                      onOpenPaper={(id) => setPaperStack((prev) => [...prev, id])}
                     />
                   ))}
                 </div>
@@ -876,7 +952,7 @@ export default function SearchPage() {
                     <button
                       onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
-                      className="rounded-lg border border-[#2A2740] p-2 text-[#B4B1C2] hover:border-[#4C3F91] disabled:opacity-30"
+                      className="rounded-lg border border-[#E4E0F5] p-2 text-[#4B4458] hover:border-[#7C3AED] disabled:opacity-30"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </button>
@@ -887,8 +963,8 @@ export default function SearchPage() {
                           onClick={() => setCurrentPage(page)}
                           className={`h-9 w-9 rounded-lg text-sm ${
                             currentPage === page
-                              ? "bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] text-white"
-                              : "border border-[#2A2740] text-[#B4B1C2] hover:border-[#4C3F91]"
+                              ? "bg-gradient-to-r from-[#6366F1] to-[#7C3AED] text-white"
+                              : "border border-[#E4E0F5] text-[#4B4458] hover:border-[#7C3AED]"
                           }`}
                         >
                           {page}
@@ -898,7 +974,7 @@ export default function SearchPage() {
                     <button
                       onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
-                      className="rounded-lg border border-[#2A2740] p-2 text-[#B4B1C2] hover:border-[#4C3F91] disabled:opacity-30"
+                      className="rounded-lg border border-[#E4E0F5] p-2 text-[#4B4458] hover:border-[#7C3AED] disabled:opacity-30"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </button>

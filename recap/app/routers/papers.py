@@ -18,6 +18,31 @@ async def get_db_connection() -> asyncpg.Connection:
     return await asyncpg.connect(DATABASE_URL, statement_cache_size=0)
 
 
+def _normalize_doi_list(raw: Any) -> List[str]:
+    """
+    paper_references / citations are supposed to be JSON arrays of plain DOI
+    strings, but some rows have entries stored as objects instead
+    (e.g. {"doi": "..."} or {"DOI": "..."}) rather than a bare string.
+    A dict can't go into a set(), which is how this endpoint dedupes DOIs,
+    so normalize everything to a flat list of strings up front and silently
+    drop anything we can't extract a DOI from.
+    """
+    if not raw:
+        return []
+
+    normalized: List[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            if item:
+                normalized.append(item)
+        elif isinstance(item, dict):
+            doi_val = item.get("doi") or item.get("DOI") or item.get("id")
+            if doi_val:
+                normalized.append(str(doi_val))
+        # anything else (None, int, list, ...) has no usable DOI — skip it
+    return normalized
+
+
 @router.get("/papers")
 async def list_papers(
     keyword: Optional[str] = Query(None, description="Filter by keyword (case-insensitive)"),
@@ -166,18 +191,20 @@ async def list_papers(
 @router.get("/papers/{doi:path}")
 async def get_paper_by_doi(doi: str) -> dict[str, Any]:
     """
-    Get full paper details by DOI.
+    Get full paper details by DOI OR by internal UUID id.
     DOI is URL-encoded, so we decode it before querying.
     Returns 404 if not found.
     """
-    # URL-decode the DOI
+    # URL-decode the DOI (or id — this is a single param that may be either)
     decoded_doi = unquote(doi)
 
     conn = None
     try:
         conn = await get_db_connection()
 
-        # Fetch paper by DOI
+        # Fetch paper by DOI or by id (as text) — lets the same route be
+        # used both for DOI-based lookups and for PaperCard's id-based
+        # navigation (/papers/{paper.id}).
         row = await conn.fetchrow(
             """
             SELECT
@@ -192,15 +219,15 @@ async def get_paper_by_doi(doi: str) -> dict[str, Any]:
                 source,
                 keywords,
                 full_text,
+                ocr_text,
                 citations,
                 paper_references,
+                citation_count,
                 language,
                 word_count,
-                citation_count,
-                status,
                 created_at
             FROM papers
-            WHERE doi = $1
+            WHERE doi = $1 OR id::text = $1
             """,
             decoded_doi
         )
@@ -208,7 +235,7 @@ async def get_paper_by_doi(doi: str) -> dict[str, Any]:
         if row is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Paper with DOI '{decoded_doi}' not found"
+                detail=f"Paper with DOI or id '{decoded_doi}' not found"
             )
 
         return {
@@ -219,16 +246,16 @@ async def get_paper_by_doi(doi: str) -> dict[str, Any]:
             "published_date": row["published_date"],
             "journal": row["journal"],
             "doi": row["doi"],
+            "pmid": row["pmid"],
             "source": row["source"],
             "keywords": row["keywords"],
             "full_text": row["full_text"],
+            "ocr_text": row["ocr_text"],
             "citations": row["citations"],
             "paper_references": row["paper_references"],
+            "citation_count": row["citation_count"],
             "language": row["language"],
             "word_count": row["word_count"],
-            "pmid": row["pmid"],
-            "citation_count": row["citation_count"],
-            "status": row["status"],
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         }
 
@@ -294,6 +321,13 @@ async def snowball(doi: str) -> dict[str, Any]:
             forward_dois = json.loads(raw_forward)
         else:
             forward_dois = raw_forward or []
+
+        # Some rows store entries as {"doi": "..."} objects instead of plain
+        # strings — normalize before anything below tries to hash them (set,
+        # dict keys, etc.), or a paper like this one 500s with
+        # "cannot use 'dict' as a set element".
+        backward_dois = _normalize_doi_list(backward_dois)
+        forward_dois = _normalize_doi_list(forward_dois)
 
         # Store totals before deduplication
         backward_total_refs = len(backward_dois) if backward_dois else 0
@@ -573,8 +607,12 @@ async def snowball_frontier(doi: str) -> dict[str, Any]:
         else:
             citations = raw_citations or []
 
+        # Normalize — see _normalize_doi_list docstring.
+        paper_references = _normalize_doi_list(paper_references)
+        citations = _normalize_doi_list(citations)
+
         # Combine all DOIs in the snowball network
-        network_dois = list(set((paper_references or []) + (citations or [])))
+        network_dois = list(set(paper_references) | set(citations))
 
         if not network_dois:
             return {
@@ -716,8 +754,12 @@ async def snowball_related(doi: str) -> dict[str, Any]:
         else:
             citations = raw_citations or []
 
+        # Normalize — see _normalize_doi_list docstring.
+        paper_references = _normalize_doi_list(paper_references)
+        citations = _normalize_doi_list(citations)
+
         # Create exclusion set (papers already in network)
-        excluded_dois = set((paper_references or []) + (citations or []))
+        excluded_dois = set(paper_references) | set(citations)
         excluded_dois.add(decoded_doi.lower())  # Also exclude seed itself
 
         seed_journal = seed_row["journal"] or ""
@@ -855,6 +897,10 @@ async def snowball_graph(doi: str) -> dict[str, Any]:
             citations = json.loads(raw_citations)
         else:
             citations = raw_citations or []
+
+        # Normalize — see _normalize_doi_list docstring.
+        paper_references = _normalize_doi_list(paper_references)
+        citations = _normalize_doi_list(citations)
 
         # Create sets for lookup
         backward_set = set(d.lower() for d in paper_references) if paper_references else set()
