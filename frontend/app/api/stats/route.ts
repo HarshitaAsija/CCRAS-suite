@@ -29,14 +29,13 @@ export async function GET() {
   const user = process.env.CCRAS_DB_USER || envVars.CCRAS_DB_USER || envVars.POSTGRES_USER || 'anshika';
   const password = process.env.CCRAS_DB_PASSWORD || envVars.CCRAS_DB_PASSWORD || envVars.POSTGRES_PASSWORD || 'anshi_123';
 
-  // Add 2.5s connection timeout so remote DB down won't block UI forever
   const client = new Client({ 
     host, 
     port, 
     database, 
     user, 
     password,
-    connectionTimeoutMillis: 2500,
+    connectionTimeoutMillis: 8000,
   });
 
   const getCount = async (table: string): Promise<number> => {
@@ -56,16 +55,16 @@ export async function GET() {
     const uploadedPapers = await getCount('uploaded_papers');
     const papersIngested = papers + uploadedPapers;
 
-    // Entities Discovered: all entities extracted
+    // Entities Discovered
     const entitiesDiscovered = await getCount('entities');
 
-    // Active Hypotheses: hypothesis_seeds table
+    // Active Hypotheses
     const activeHypotheses = await getCount('hypothesis_seeds');
 
-    // Graph Nodes: relationship_instances
+    // Graph Nodes
     const graphNodes = await getCount('relationship_instances');
 
-    // Research Gaps: gap_candidates table
+    // Research Gaps
     const researchGaps = await getCount('gap_candidates');
 
     // Studies created
@@ -74,49 +73,23 @@ export async function GET() {
     await client.end();
 
     return NextResponse.json({
-      papersIngested: papersIngested || 1245,
-      entitiesDiscovered: entitiesDiscovered || 4850,
-      activeHypotheses: activeHypotheses || 28,
-      graphNodes: graphNodes || 1920,
-      researchGaps: researchGaps || 14,
-      contradictions: contradictions || 6,
-      papers: papers || 1125,
-      uploadedPapers: uploadedPapers || 120,
+      papersIngested,
+      entitiesDiscovered,
+      activeHypotheses,
+      graphNodes,
+      researchGaps,
+      contradictions,
+      papers,
+      uploadedPapers,
     }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' }
     });
   } catch (error: any) {
-    console.warn('PostgreSQL connection failed or timed out, trying fallback stats:', error?.message);
+    console.error('PostgreSQL connection failed:', error?.message);
     if (client) await client.end().catch(() => {});
-
-    // Try fetching from local Rishi AI backend (port 8001)
-    try {
-      const rishiRes = await fetch('http://127.0.0.1:8001/api/stats', { signal: AbortSignal.timeout(2000) });
-      if (rishiRes.ok) {
-        const data = await rishiRes.json();
-        return NextResponse.json({
-          papersIngested: 1420,
-          uploadedPapers: 150,
-          entitiesDiscovered: 5890,
-          activeHypotheses: data.hypothesis_seeds || 34,
-          graphNodes: 2310,
-          researchGaps: data.gaps_identified || 16,
-          contradictions: 8,
-        }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
-      }
-    } catch (rishiErr) {
-      // Rishi AI unreachable
-    }
-
-    // Fallback: return active default database stats so dashboard connects immediately
-    return NextResponse.json({
-      papersIngested: 1420,
-      uploadedPapers: 150,
-      entitiesDiscovered: 5890,
-      activeHypotheses: 34,
-      graphNodes: 2310,
-      researchGaps: 16,
-      contradictions: 8,
-    }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+    return NextResponse.json(
+      { error: 'Failed to connect to database', details: error.message }, 
+      { status: 500 }
+    );
   }
 }
