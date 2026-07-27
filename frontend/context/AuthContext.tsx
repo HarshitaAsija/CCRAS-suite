@@ -3,11 +3,9 @@
 /**
  * context/AuthContext.tsx
  * ───────────────────────────────────────────────────────────────────────────
- * App-wide auth state. Wraps lib/auth.ts (the swappable layer) and exposes
- * `user`, `isLoading`, `login`, `signup`, and `logout` to the rest of the app
- * via `useAuth()`. No page or component below talks to lib/auth.ts directly —
- * they all go through this context, so the localStorage → real-API swap in
- * lib/auth.ts is the only place that needs to change.
+ * App-wide auth state. Now uses the recap auth library directly (via '@/lib/auth').
+ * Exposes `user`, `isLoading`, `login`, `signup`, and `logout` to the rest of the app
+ * via `useAuth()`.
  * ───────────────────────────────────────────────────────────────────────────
  */
 
@@ -22,7 +20,7 @@ import {
 } from 'react';
 import { useRouter } from 'next/navigation';
 import type { User } from '@/types';
-import * as authApi from '@/lib/auth';
+import * as authApi from '@/lib/auth'; // This is now the recap auth library
 
 interface AuthContextValue {
   user: User | null;
@@ -39,27 +37,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  // Restore the session on first load so refreshing the page doesn't log
-  // the user out. TODO(backend): once real sessions exist, you may want to
-  // call authApi.fetchCurrentUser() here instead of trusting local storage.
+  // Restore the session on first load.
+  // If we have a token, we try to fetch the current user from the backend to validate.
+  // Otherwise, we fall back to the cached user (from localStorage).
   useEffect(() => {
-  if (typeof window !== 'undefined') {
-    setUser(authApi.getStoredUser());
-  }
-  setIsLoading(false);
-}, []);
-
-  const signup = useCallback(async (input: { name: string; email: string; password: string }) => {
-    const result = await authApi.signup(input);
-    setUser(result);
-    return result;
+    if (typeof window !== 'undefined') {
+      const token = authApi.getToken();
+      if (token) {
+        // Token exists, validate with backend
+        authApi
+          .getCurrentUser()
+          .then(fetchUser => {
+            setUser(fetchUser ?? null);
+          })
+          .catch(() => {
+            // If fetching the current user fails, clear the session
+            authApi.logout(); // This clears the token and user from storage
+            setUser(null);
+          });
+      } else {
+        // No token, try to get cached user from localStorage
+        setUser(authApi.getCachedUser());
+      }
+    }
+    setIsLoading(false);
   }, []);
 
-  const login = useCallback(async (input: { email: string; password: string }) => {
-    const result = await authApi.login(input);
-    setUser(result);
-    return result;
-  }, []);
+  const signup = useCallback(
+    async (input: { name: string; email: string; password: string }) => {
+      const result = await authApi.registerUser(
+        input.email,
+        input.password,
+        input.name,
+        // role is optional; we can let the backend decide or pass a default.
+        // We'll pass undefined to let the backend use its default.
+        undefined
+      );
+      if (!result.user) {
+        throw new Error('Sign up succeeded but no user returned');
+      }
+      setUser(result.user);
+      return result.user;
+    },
+    []
+  );
+
+  const login = useCallback(
+    async (input: { email: string; password: string }) => {
+      const result = await authApi.loginUser(input.email, input.password);
+      if (!result.user) {
+        throw new Error('Login succeeded but no user returned');
+      }
+      setUser(result.user);
+      return result.user;
+    },
+    []
+  );
 
   const logout = useCallback(async () => {
     await authApi.logout();

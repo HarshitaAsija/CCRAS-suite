@@ -3,9 +3,14 @@ import torch
 
 class SummarizationService:
     def __init__(self):
-        self.model_name = "facebook/bart-large-cnn"
-        self.tokenizer = BartTokenizer.from_pretrained(self.model_name)
-        self.model = BartForConditionalGeneration.from_pretrained(self.model_name)
+        self.model_name = "sshleifer/distilbart-cnn-12-6"
+        self.tokenizer = None
+        self.model = None
+
+    def _ensure_model_loaded(self):
+        if self.tokenizer is None or self.model is None:
+            self.tokenizer = BartTokenizer.from_pretrained(self.model_name)
+            self.model = BartForConditionalGeneration.from_pretrained(self.model_name)
 
     def summarize_single(self, text: str) -> str:
         """
@@ -17,6 +22,7 @@ class SummarizationService:
         Returns:
             Summary string
         """
+        self._ensure_model_loaded()
         # Tokenize input
         inputs = self.tokenizer.encode(
             text,

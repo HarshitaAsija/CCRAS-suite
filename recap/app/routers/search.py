@@ -14,8 +14,14 @@ router = APIRouter()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Load embedding model once at module level for reuse across requests
-_embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+# Load embedding model lazily to avoid loading at startup
+_embedding_model = None
+
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _embedding_model
 
 # NOTE: asyncpg.connect() / register_vector() are no longer called here.
 # The pool is created once at app startup (see main app file) with an
@@ -231,7 +237,7 @@ async def search_papers_semantic(
     pool = request.app.state.pool
 
     try:
-        query_embedding = await asyncio.to_thread(_embedding_model.encode, query_text, convert_to_numpy=True)
+        query_embedding = await asyncio.to_thread(get_embedding_model().encode, query_text, convert_to_numpy=True)
         embedding_list = query_embedding.tolist()
 
         subquery_conditions = []
@@ -513,7 +519,7 @@ async def search_papers_hybrid(
     pool = request.app.state.pool
 
     try:
-        query_embedding = await asyncio.to_thread(_embedding_model.encode, query_text, convert_to_numpy=True)
+        query_embedding = await asyncio.to_thread(get_embedding_model().encode, query_text, convert_to_numpy=True)
         embedding_list = query_embedding.tolist()
 
         # ---- BM25 candidate list ----

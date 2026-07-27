@@ -56,7 +56,7 @@ app.include_router(search_router)
 app.include_router(summarization_router)
 app.include_router(dashboard_router)
 app.include_router(analytics_router, prefix="/api/analytics", tags=["analytics"])
-app.include_router(auth_router, prefix="/api/auth")
+app.include_router(auth_router)
 
 
 @app.get("/")
