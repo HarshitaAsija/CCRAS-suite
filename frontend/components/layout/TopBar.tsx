@@ -27,8 +27,7 @@ export function TopBar({ page }: TopBarProps) {
   return (
     <div className="h-14 bg-surface border-b border-border-light flex items-center px-6 gap-4 flex-shrink-0 z-10 sticky top-0">
       <div className="flex items-center gap-2">
-        <span className="text-xs font-semibold text-text-muted tracking-wider uppercase">BRAHMA</span>
-        <span className="text-border-med font-light">/</span>
+        
         <span className="text-sm font-semibold text-foreground">{pageLabel}</span>
       </div>
       
