@@ -4,6 +4,8 @@ import logging
 import io
 
 from app.database import get_db
+from core.auth import get_user
+from app.models import User
 from ingestion.pipeline import process_and_store
 from ingestion.models import RawPaper
 
@@ -15,9 +17,20 @@ router = APIRouter(
 
 logger = logging.getLogger(__name__)
 
+DEMO_MODE = True
+DEMO_USER_EMAIL = "test@example.com"
+
+
+async def get_demo_or_real_user(db: Session = Depends(get_db)) -> User:
+    if DEMO_MODE:
+        user = get_user(db, email=DEMO_USER_EMAIL)
+        if user is None:
+            raise HTTPException(500, "Demo user not found in DB")
+        return user
+    raise HTTPException(501, "Real auth not wired yet")
+
 
 def extract_with_pdfplumber(pdf_content: bytes, filename: str) -> RawPaper:
-    """Extract text directly from PDF using pdfplumber."""
     import pdfplumber
 
     text = ""
@@ -29,13 +42,11 @@ def extract_with_pdfplumber(pdf_content: bytes, filename: str) -> RawPaper:
 
     text = text.strip()
 
-    # Use filename as title (strip .pdf)
     title = filename
     if title.lower().endswith(".pdf"):
         title = title[:-4]
     title = title.replace("_", " ").replace("-", " ")
 
-    # First 500 chars as abstract
     abstract = text[:500] if text else ""
 
     return RawPaper(
@@ -57,8 +68,8 @@ def extract_with_pdfplumber(pdf_content: bytes, filename: str) -> RawPaper:
 async def upload_pdf(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_demo_or_real_user),
 ):
-    # Validate file type
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -68,7 +79,6 @@ async def upload_pdf(
     pdf_content = await file.read()
     raw_paper = None
 
-    # Try GROBID first
     try:
         from ingestion.grobid_client import GrobidClient
         grobid_client = GrobidClient()
@@ -99,8 +109,6 @@ async def upload_pdf(
 
     except Exception as grobid_error:
         logger.warning(f"GROBID failed: {grobid_error}. Using pdfplumber fallback.")
-
-        # Fallback to pdfplumber
         try:
             raw_paper = extract_with_pdfplumber(pdf_content, file.filename)
             logger.info(f"Fallback processed: {raw_paper.title}")
@@ -111,9 +119,8 @@ async def upload_pdf(
                 detail=f"Could not process PDF: {str(fallback_error)}",
             )
 
-    # Store in database
     try:
-        paper_id = process_and_store(raw_paper, db)
+        paper_id = process_and_store(raw_paper, db, user_id=current_user.id)
     except Exception as store_error:
         logger.error(f"Failed to store paper: {store_error}")
         raise HTTPException(
@@ -124,16 +131,18 @@ async def upload_pdf(
     if paper_id is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Paper already exists (duplicate title)",
+            detail="Paper already exists in your library",
         )
 
-    # Return stored paper details
     from app.models_uploaded import UploadedPaper
     stored_paper = db.query(UploadedPaper).filter(UploadedPaper.id == paper_id).first()
 
+    keywords = [kw.keyword for kw in stored_paper.keywords] if stored_paper.keywords else []
+
     return {
-        "id": stored_paper.id,
+        "id": str(stored_paper.id),
         "title": stored_paper.title,
         "doi": stored_paper.doi,
+        "keywords": keywords,
         "message": "Paper uploaded and processed successfully",
     }
