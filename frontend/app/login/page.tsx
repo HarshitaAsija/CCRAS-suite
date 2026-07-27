@@ -3,7 +3,6 @@ import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { saveToken } from "../../components/library/recap/lib/auth";
 
 function GraphIllustration() {
   return (
@@ -33,7 +32,7 @@ function GraphIllustration() {
 
 function LoginForm() {
   const { login } = useAuth();
-  const params = useSearchParams();
+  const { push } = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -41,16 +40,18 @@ function LoginForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(''); setLoading(true);
+    setError('');
+    setLoading(true);
     try {
       const user = await login({ email, password });
-      // Use the dev token that the recap module's authHeaders falls back to
-      // This ensures the RAG module recognizes the user as logged in
-      saveToken("dev-token");
-      window.location.href = '/dashboard';
+      // The login function (via authApi) already saved the token via the recap auth layer.
+      // No need to manually set a dev-token.
+      push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Login failed');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -78,7 +79,7 @@ function LoginForm() {
         {/* Mobile logo */}
         <div className="lg:hidden flex items-center gap-2 mb-8 self-start">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-primary text-white text-sm font-bold">R</div>
-          <span className="font-semibold text-foreground text-sm">RISHI-AI</span>
+          <span className="font-semibold text-foreground text-sm">Research Intelligent Suite</span>
         </div>
 
         <div className="w-full max-w-sm">
@@ -106,6 +107,9 @@ function LoginForm() {
               />
             </div>
             {error && <p className="text-xs font-medium text-danger bg-danger-light border border-danger/20 px-3 py-2 rounded-lg">{error}</p>}
+            <p className="text-xs text-text-muted text-right">
+              <Link href="/forgot-password" className="font-medium hover:underline">Forgot password?</Link>
+            </p>
             <button type="submit" disabled={loading}
               className="w-full py-3 mt-1 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90 transition-colors shadow-sm"
               style={{ opacity: loading ? 0.7 : 1 }}>

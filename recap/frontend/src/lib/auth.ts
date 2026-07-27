@@ -129,16 +129,15 @@ export async function registerUser(
   name?: string,
   role?: string
 ): Promise<{ message: string; user?: UserProfile }> {
-  // ✅ FIX: Changed from /auth/signup to /api/auth/signup
-  const params = new URLSearchParams({ 
-    email, 
-    password,
-    ...(name && { name }),
-    ...(role && { role })
-  });
+  // ✅ FIX: Send JSON body instead of query params (backend expects JSON via SignupRequest)
+  const body: Record<string, string> = { email, password };
+  if (name) body.name = name;
+  if (role) body.role = role;
 
-  const res = await fetch(`${API_BASE}/api/auth/signup?${params.toString()}`, {
+  const res = await fetch(`${API_BASE}/api/auth/signup`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

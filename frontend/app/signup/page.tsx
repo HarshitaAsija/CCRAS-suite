@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
 function GraphIllustration() {
@@ -11,6 +12,8 @@ function GraphIllustration() {
         [180,130,195,275],[310,75,390,148],[55,180,95,278],[340,195,390,148],
         [340,195,298,298],[195,275,298,298],[95,278,195,275],
         [310,75,238,35],[390,148,430,95],[55,180,18,238],
+        [238,35,160,25],[430,95,470,60],[18,238,10,300],
+        [160,25,5]
       ].map(([x1,y1,x2,y2],i) => (
         <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.2)" strokeWidth="1.2"/>
       ))}
@@ -27,6 +30,7 @@ function GraphIllustration() {
 
 export default function SignupPage() {
   const { signup } = useAuth();
+  const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,13 +39,16 @@ export default function SignupPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(''); setLoading(true);
+    setError('');
+    setLoading(true);
     try {
       await signup({ name, email, password });
-      window.location.href = '/dashboard';
+      router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Signup failed');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -49,7 +56,7 @@ export default function SignupPage() {
       {/* LEFT — hero panel */}
       <div className="hidden lg:flex w-1/2 flex-col p-12 bg-primary relative overflow-hidden">
         <div className="flex items-center gap-2.5 mb-auto">
-          
+
           <span className="text-white font-semibold text-sm tracking-wide">CCRAS RESEARCH INTELLIGENCE SUITE</span>
         </div>
         <div className="mb-8">
@@ -68,7 +75,7 @@ export default function SignupPage() {
       <div className="flex-1 flex flex-col items-center justify-center p-8 bg-background">
         <div className="lg:hidden flex items-center gap-2 mb-8 self-start">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-primary text-white text-sm font-bold">R</div>
-          <span className="font-semibold text-foreground text-sm">RISHI-AI</span>
+          <span className="font-semibold text-foreground text-sm">Research Intelligent Suite</span>
         </div>
 
         <div className="w-full max-w-sm">

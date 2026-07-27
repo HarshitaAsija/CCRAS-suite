@@ -8,7 +8,13 @@ from app.models import Paper
 from app.models_uploaded import UploadedPaper
 
 router = APIRouter()
-summarization_service = SummarizationService()
+_summarization_service = None
+
+def get_summarization_service():
+    global _summarization_service
+    if _summarization_service is None:
+        _summarization_service = SummarizationService()
+    return _summarization_service
 
 
 class PaperIdRequest(BaseModel):
@@ -58,7 +64,7 @@ async def summarize_single_paper(request: PaperIdRequest, db: Session = Depends(
             detail="Paper has no content to summarize"
         )
 
-    summary = summarization_service.summarize_single(text_to_summarize)
+    summary = get_summarization_service().summarize_single(text_to_summarize)
 
     return {
         "paper_id": str(paper.id),
@@ -178,7 +184,7 @@ async def compare_papers(request: PaperIdsRequest, db: Session = Depends(get_db)
             detail="No abstracts available for the provided papers",
         )
 
-    comparative_summary = summarization_service.summarize_single(combined_abstract)
+    comparative_summary = get_summarization_service().summarize_single(combined_abstract)
 
     stopwords = {
         "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",

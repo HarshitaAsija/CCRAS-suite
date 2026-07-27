@@ -6,7 +6,10 @@
       "Bash(npx tsc *)",
       "Bash(npx *)",
       "Bash(./node_modules/.bin/tsc --noEmit)",
-      "Bash(/mnt/c/Users/Khush/Projects/CCRAS-suite/recap/venv/Scripts/python *)"
+      "Bash(/mnt/c/Users/Khush/Projects/CCRAS-suite/recap/venv/Scripts/python *)",
+      "Bash(curl -s -X POST http://localhost:3001/register -H \"Content-Type: application/json\" -d '{}')",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "Bash(netstat -tlnp)"
     ]
   }
 }

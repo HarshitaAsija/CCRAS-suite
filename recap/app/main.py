@@ -9,6 +9,7 @@ from api.rag import router as rag_router
 from app.routers import library 
 from api.dashboard import router as dashboard_router
 from api.analytics import router as analytics_router
+from api.summarization import router as summarize_router
 from fastapi.middleware.cors import CORSMiddleware
 from pgvector.asyncpg import register_vector
 import asyncpg
@@ -49,6 +50,7 @@ app.include_router(ingestion_router)
 app.include_router(papers_router, prefix="/api")
 app.include_router(rag_router, prefix="/api")
 app.include_router(library.router, prefix="/api")
+app.include_router(summarize_router, prefix="/api")
 
 # ✅ CORRECT - Don't add prefix here since they already have /api
 app.include_router(dashboard_router)  # Already has /api/dashboard
