@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
 from rapidfuzz import fuzz
@@ -16,16 +17,14 @@ kw_model = KeyBERT()
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
 
-def process_and_store(paper: RawPaper, db: Session):
+def process_and_store(paper: RawPaper, db: Session, user_id: Optional[uuid.UUID] = None):
 
-    # Step 1 - Check DOI duplicate
     if paper.doi:
         exists = db.query(UploadedPaper).filter(UploadedPaper.doi == paper.doi).first()
         if exists:
             logger.info(f"Skipping duplicate DOI: {paper.doi}")
             return None
 
-    # Step 2 - Check title similarity
     all_titles = db.query(UploadedPaper.title).all()
     for (existing_title,) in all_titles:
         similarity = fuzz.ratio(paper.title, existing_title) / 100
@@ -33,11 +32,9 @@ def process_and_store(paper: RawPaper, db: Session):
             logger.info(f"Skipping similar title: {paper.title}")
             return None
 
-    # Step 3 - Extract keywords
     text = f"{paper.title} {paper.abstract}"
     keywords = kw_model.extract_keywords(text, top_n=10)
 
-    # Step 4 - Store paper
     pub_date = paper.published_date
     if pub_date is not None and not isinstance(pub_date, str):
         pub_date = str(pub_date)
@@ -53,12 +50,12 @@ def process_and_store(paper: RawPaper, db: Session):
         arxiv_id=getattr(paper, 'arxiv_id', None),
         pdf_url=getattr(paper, 'pdf_url', None),
         authors=paper.authors,
-        status='uploaded'
+        status='uploaded',
+        user_id=user_id
     )
     db.add(db_paper)
     db.flush()
 
-    # Step 5 - Store keywords
     for kw, score in keywords:
         try:
             keyword = UploadedPaperKeyword(
@@ -82,9 +79,6 @@ def process_and_store(paper: RawPaper, db: Session):
 
 
 def save_papers(papers: list, db: Session) -> int:
-    """
-    Save a list of paper dictionaries from Khushi's scraper to the database.
-    """
     saved_count = 0
 
     def _parse_published_at(date_str: Optional[str]) -> Optional[datetime]:
@@ -160,8 +154,5 @@ async def trigger_batch_ingest(
     db: Session = Depends(get_db)
 ):
     from ingestion.batch_ingestion import batch_ingest
-    """
-    Trigger a batch ingestion process.
-    """
     background_tasks.add_task(batch_ingest, query, sources, max_per_source, db)
     return {"message": "Batch ingestion started in background"}

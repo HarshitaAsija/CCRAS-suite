@@ -101,18 +101,16 @@ def ingest_save_papers(
 @router.post("/ingest/batch")
 async def ingest_batch(
     request: BatchIngestRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
-    Start a batch ingestion process from multiple sources.
+    Run a batch ingestion process from multiple sources and return the result.
     """
-    background_tasks.add_task(
-        batch_ingest,
+    result = await batch_ingest(
         request.query,
         request.sources,
         request.max_per_source,
         db
     )
 
-    return {"message": "Batch ingestion started in the background"}
+    return result
