@@ -18,21 +18,22 @@ The platform integrates language models, knowledge graphs, and workflow automati
 ## 📐 Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        CCRAS Intelligence Suite                     │
-├──────────────┬──────────────────────┬───────────────────────────────┤
-│   frontend/  │     backend/         │         ai/                   │
-│   Next.js 16 │     FastAPI          │     FastAPI (Rishi-AI)        │
-│   Port 3000  │     Port 8002        │     Port 8001                 │
-├──────────────┴──────────────────────┴───────────────────────────────┤
-│                         Data Layer                                  │
-│  PostgreSQL (5432)  │  SQLite (brahma.db)  │  Neo4j (7687)         │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                             CCRAS Intelligence Suite                             │
+├──────────────┬──────────────────────┬──────────────────────┬─────────────────────┤
+│   frontend/  │     recap/           │     backend/         │         ai/         │
+│   Next.js 16 │     FastAPI (RECAP)  │     FastAPI (Brahma) │  FastAPI (Rishi-AI) │
+│   Port 3000  │     Port 8000        │     Port 8002        │     Port 8001       │
+├──────────────┴──────────────────────┴──────────────────────┴─────────────────────┤
+│                                 Data Layer                                       │
+│  PostgreSQL (5432)  │      SQLite (brahma.db)      │         Neo4j (7687)        │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 | Layer | Technology | Port | Purpose |
 |:------|:-----------|:-----|:--------|
 | **Frontend** | Next.js 16, React 19, TypeScript | `3000` | Dashboard, UI, all modules |
+| **Backend (RECAP)** | FastAPI, Python | `8000` | Document ingestion, summarization, analytics |
 | **Backend (Brahma)** | FastAPI, Python | `8002` | Study design, protocol export, evidence adapter |
 | **Backend (Rishi-AI)** | FastAPI, Python | `8001` | Literature search, gap analysis, hypothesis generation |
 | **Database** | PostgreSQL 16 | `5432` | Papers, entities, hypotheses, gaps (remote hosted) |
@@ -117,32 +118,31 @@ npm run dev
 
 ---
 
-### Step 2 — Install & Start the Brahma Backend (Port 8002)
+### Step 2 — Install & Start the RECAP Backend (Port 8000)
 
-Open a **new terminal**:
+Open a **new terminal** (Windows environment example):
 
-```bash
-cd backend
+```powershell
+cd recap
 
 # Create virtual environment (first time only)
 python -m venv venv
 
-# Activate it
-# On Windows:
-venv\Scripts\activate
+# Activate it (Windows)
+.\venv\Scripts\Activate.ps1
 # On macOS/Linux:
-source venv/bin/activate
+# source venv/bin/activate
 
 # Install dependencies (first time only)
 pip install -r requirements.txt
 
 # Start the server
-uvicorn app.main:app --port 8002 --reload
+uvicorn app.main:app --reload
 ```
 
-✅ **Brahma API running at** → [http://localhost:8002/docs](http://localhost:8002/docs)
+✅ **RECAP API running at** → [http://localhost:8000/docs](http://localhost:8000/docs)
 
-> Powers: Study Design Studio, Protocol Export (Markdown/Word/HTML), Evidence Adapter, PICO Builder
+> Powers: Document Ingestion, Summarization, RAG Assistant, Analytics
 
 ---
 
@@ -175,7 +175,36 @@ uvicorn api_server:app --port 8001 --reload
 
 ---
 
-### Step 4 (Optional) — Neo4j for Knowledge Graphs
+### Step 4 — Install & Start the Brahma Backend (Port 8002)
+
+Open a **new terminal**:
+
+```bash
+cd backend
+
+# Create virtual environment (first time only)
+python -m venv venv
+
+# Activate it
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+# Install dependencies (first time only)
+pip install -r requirements.txt
+
+# Start the server
+uvicorn app.main:app --port 8002 --reload
+```
+
+✅ **Brahma API running at** → [http://localhost:8002/docs](http://localhost:8002/docs)
+
+> Powers: Study Design Studio, Protocol Export (Markdown/Word/HTML), Evidence Adapter, PICO Builder
+
+---
+
+### Step 5 (Optional) — Neo4j for Knowledge Graphs
 
 If you want the interactive knowledge graph visualization in RISHI-AI:
 
@@ -193,7 +222,7 @@ docker run -d \
 
 ---
 
-### Step 5 (Optional) — Ollama for Local LLM
+### Step 6 (Optional) — Ollama for Local LLM
 
 If you want AI-powered hypothesis generation and gap analysis:
 
@@ -209,13 +238,14 @@ ollama serve
 
 ## 🖥️ Running Summary
 
-Once everything is set up, you need **3 terminals** running simultaneously:
+Once everything is set up, you need **4 terminals** running simultaneously:
 
 | Terminal | Directory | Command | Port |
 |:---------|:----------|:--------|:-----|
 | 1️⃣ | `frontend/` | `npm run dev` | 3000 |
-| 2️⃣ | `backend/` | `uvicorn app.main:app --port 8002 --reload` | 8002 |
+| 2️⃣ | `recap/` | `uvicorn app.main:app --reload` | 8000 |
 | 3️⃣ | `ai/` | `uvicorn api_server:app --port 8001 --reload` | 8001 |
+| 4️⃣ | `backend/` | `uvicorn app.main:app --port 8002 --reload` | 8002 |
 
 Then open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
@@ -285,6 +315,13 @@ CCRAS-suite/
 │   ├── config.py                #   Environment configuration
 │   ├── ingestion/               #   Paper ingestion pipelines
 │   ├── knowledgegraph/          #   Neo4j graph construction
+│   └── requirements.txt
+│
+├── recap/                       # RECAP backend
+│   ├── app/                     #   App code
+│   │   ├── main.py              #   FastAPI entry point (port 8000)
+│   ├── api/                     #   API routers
+│   ├── ingestion/               #   Data ingestion logic
 │   └── requirements.txt
 │
 ├── .env.example                 # Environment variable template
